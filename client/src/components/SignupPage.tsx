@@ -1,7 +1,7 @@
 // src/pages/SignupPage.tsx
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { User } from '../types'; // Assuming User interface is in App.tsx or a types file
+import type { User } from '../types'; // Assuming User interface is in types.ts or similar
 
 interface SignupPageProps {
   onSignupSuccess: (user: User) => void;
@@ -9,7 +9,7 @@ interface SignupPageProps {
 
 const SignupPage: React.FC<SignupPageProps> = ({ onSignupSuccess }) => {
   const [username, setUsername] = useState('');
-  const [wizardName, setWizardName] = useState(''); // For avatar/profile
+  const [wizardName, setWizardName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -32,42 +32,114 @@ const SignupPage: React.FC<SignupPageProps> = ({ onSignupSuccess }) => {
 
     setIsLoading(true);
 
-    // --- MOCK API CALL ---
-    // Replace this with your actual API call to Django
     try {
-      // Example: const response = await fetch('/api/auth/register/', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ username, email, password, wizard_name: wizardName })
-      // });
-      // if (!response.ok) {
-      //   const errData = await response.json();
-      //   throw new Error(errData.detail || 'Signup failed');
-      // }
-      // const data = await response.json();
+      const response = await fetch('http://127.0.0.1:8000/auth/register/', { // Updated API endpoint
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          // If your Django backend requires a CSRF token for this endpoint,
+          // you'll need to fetch and include it. For many DRF JWT setups,
+          // CSRF might be disabled for API endpoints or handled differently.
+          // 'X-CSRFToken': getCookie('csrftoken'), // Example if using cookies for CSRF
+        },
+        body: JSON.stringify({
+          username,
+          email,
+          password,
+          wizard_name: wizardName, // Send as snake_case if your Django serializer expects that
+          // If your Django backend expects password confirmation, send it too:
+          // password2: confirmPassword,
+        }),
+      });
 
-      // Mock successful signup
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate network delay
-      const mockUser: User = { id: Date.now(), username, email };
-      console.log('Signup successful:', mockUser, 'Wizard Name:', wizardName);
-      onSignupSuccess(mockUser); // Update global state
-      navigate('/sorting-hat');
+      const responseData = await response.json();
+
+      if (!response.ok) {
+        // Handle errors from the backend
+        // DRF often returns errors as an object: e.g., { username: ["already exists"], email: ["invalid"] }
+        let errorMessage = 'Signup failed. Please try again.';
+        if (responseData) {
+          if (responseData.detail) {
+            errorMessage = responseData.detail;
+          } else {
+            // Concatenate multiple field errors if they exist
+            const fieldErrors = Object.entries(responseData)
+              .map(([field, errors]) => {
+                if (Array.isArray(errors)) {
+                  return `${field}: ${errors.join(', ')}`;
+                }
+                return `${field}: ${errors}`;
+              })
+              .join(' | ');
+            if (fieldErrors) errorMessage = fieldErrors;
+          }
+        }
+        throw new Error(errorMessage);
+      }
+
+      // Assuming successful signup returns the user object (or part of it)
+      // Adjust according to your actual backend response structure
+      // For example, DRF might return the created user directly, or nested.
+      // Let's assume it returns something like: { id: 1, username: "newuser", email: "new@example.com", ... }
+      // or { "user": { id: 1, ... }, "message": "User created" }
+
+      let createdUser: User;
+      if (responseData.user && responseData.user.id) { // Example if nested under 'user'
+         createdUser = {
+            id: responseData.user.id,
+            username: responseData.user.username,
+            email: responseData.user.email,
+            // wizardName: responseData.user.wizard_name // if returned and part of User type
+         };
+      } else if (responseData.id) { // Example if returned directly
+         createdUser = {
+            id: responseData.id,
+            username: responseData.username,
+            email: responseData.email,
+            // wizardName: responseData.wizard_name // if returned and part of User type
+         };
+      } else {
+        // Fallback if response structure is unknown but signup was "ok"
+        // This is not ideal, backend should return consistent user data
+        console.warn("Signup successful, but user data structure from backend is unexpected.", responseData);
+        createdUser = { id: Date.now(), username, email }; // Use form data as a fallback
+      }
+
+
+      console.log('Signup successful:', createdUser, 'Wizard Name used:', wizardName);
+      onSignupSuccess(createdUser); // Update global state
+      navigate('/sorting-hat'); // Or navigate to login page, or dashboard if auto-login
 
     } catch (err) {
-      setError((err as Error).message || 'An unknown error occurred.');
+      setError((err as Error).message || 'An unknown error occurred during signup.');
     } finally {
       setIsLoading(false);
     }
-    // --- END MOCK API CALL ---
   };
+
+  // Helper function to get CSRF cookie if needed (place outside component or in a utils file)
+  // function getCookie(name: string) {
+  //   let cookieValue = null;
+  //   if (document.cookie && document.cookie !== '') {
+  //     const cookies = document.cookie.split(';');
+  //     for (let i = 0; i < cookies.length; i++) {
+  //       const cookie = cookies[i].trim();
+  //       if (cookie.substring(0, name.length + 1) === (name + '=')) {
+  //         cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+  //         break;
+  //       }
+  //     }
+  //   }
+  //   return cookieValue;
+  // }
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-gray-800 via-gray-900 to-black p-6">
       <div className="bg-gray-800 p-8 md:p-12 rounded-lg shadow-2xl w-full max-w-md border border-yellow-500/30">
-        <h1 className="text-4xl font-bold text-yellow-400 mb-2 text-center font-['Lumos']">Enroll at Hogwarts</h1> {/* You might need to add a custom font */}
+        <h1 className="text-4xl font-bold text-yellow-400 mb-2 text-center font-['Lumos']">Enroll at Hogwarts</h1>
         <p className="text-gray-400 mb-8 text-center">Create your wizarding identity.</p>
 
-        {error && <p className="bg-red-500/30 text-red-300 p-3 rounded mb-4 text-sm">{error}</p>}
+        {error && <p className="bg-red-500/30 text-red-300 p-3 rounded mb-4 text-sm whitespace-pre-wrap">{error}</p>}
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
@@ -126,12 +198,12 @@ const SignupPage: React.FC<SignupPageProps> = ({ onSignupSuccess }) => {
             />
           </div>
           <div>
-            <label htmlFor="confirmPassword" className="block text-sm font-medium text-yellow-300/80">
+            <label htmlFor="password2" className="block text-sm font-medium text-yellow-300/80">
               Confirm Incantation
             </label>
             <input
               type="password"
-              id="confirmPassword"
+              id="password2"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
