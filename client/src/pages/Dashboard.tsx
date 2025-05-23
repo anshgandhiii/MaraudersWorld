@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import axios from "axios";
 import {
   Star,
   Wand2,
@@ -8,12 +9,12 @@ import {
   Trophy,
   Sparkles,
   Package,
-  AlertTriangle, // For error display
+  AlertTriangle,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { User, HogwartsHouse } from "../types";
 
-// NavigationCardProps and houseStyles remain the same from your original code
+// NavigationCardProps interface
 interface NavigationCardProps {
   to: string;
   icon: React.ComponentType<{ size?: number }>;
@@ -22,6 +23,7 @@ interface NavigationCardProps {
   delay: string;
 }
 
+// House styles
 export const houseStyles = {
   Gryffindor: { bg: "from-red-900 via-red-800 to-red-900", text: "text-yellow-200", border: "border-yellow-400", accent: "text-yellow-400", glow: "shadow-red-500/30" },
   Slytherin: { bg: "from-green-900 via-green-800 to-emerald-900", text: "text-slate-200", border: "border-emerald-400", accent: "text-emerald-300", glow: "shadow-green-500/30" },
@@ -30,14 +32,13 @@ export const houseStyles = {
   Default: { bg: "from-gray-900 via-gray-800 to-gray-900", text: "text-amber-200", border: "border-amber-400", accent: "text-amber-400", glow: "shadow-amber-500/30" },
 };
 
-// Type guard to check if house is a valid HogwartsHouse
-// Ensure 'Default' is not considered a "valid assigned house" for core logic,
-// but can be used for styling if no house is assigned.
-const isValidHouse = (house: User['house']): house is HogwartsHouse =>
-  !!house && 
+// Type guard for valid HogwartsHouse
+const isValidHouse = (house: string | undefined): house is HogwartsHouse =>
+  !!house &&
   (Object.keys(houseStyles) as Array<keyof typeof houseStyles>).includes(house as keyof typeof houseStyles) &&
-  house !== 'Default' as keyof typeof houseStyles;
+  house !== 'Default';
 
+// NavigationCard component
 export const NavigationCard: React.FC<NavigationCardProps> = ({
   to,
   icon: Icon,
@@ -80,26 +81,102 @@ export const NavigationCard: React.FC<NavigationCardProps> = ({
   </Link>
 );
 
+// Types for API data
+type Wand = {
+  id: number;
+  core: string;
+  core_display: string;
+  wood_type: string;
+  wood_type_display: string;
+  length_inches: string;
+  flexibility: string;
+};
 
-interface HomeDashboardPageProps {
-  user: User | null | undefined; // Allow user to be null or undefined initially
-}
+type UserProfile = {
+  id: number;
+  username: string;
+  email: string;
+  house: string;
+  house_display: string;
+  level: number;
+  xp: number;
+  avatar_url?: string;
+  current_latitude?: number;
+  current_longitude?: number;
+  last_seen: string;
+};
 
-const HomeDashboardPage: React.FC<HomeDashboardPageProps> = ({ user }) => {
+type DashboardData = {
+  profile: UserProfile;
+  completed_quests_count: number;
+  pending_quests_count: number;
+  in_progress_quests_count: number;
+};
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://maraudersworld.onrender.com";
+
+const HomeDashboardPage: React.FC = () => {
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [wands, setWands] = useState<Wand[]>([]);
+  const [completedQuests, setCompletedQuests] = useState<number>(0);
+  const [pendingQuests, setPendingQuests] = useState<number>(0);
+  const [inProgressQuests, setInProgressQuests] = useState<number>(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    console.log("HomeDashboardPage received user prop:", JSON.stringify(user, null, 2));
-    setMounted(true);
-  }, [user]);
+    const fetchDashboard = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const token = localStorage.getItem("accessToken");
+        if (!token) throw new Error("No access token found");
 
-  // CRITICAL: Check if user data is available
-  if (!user) {
-    console.error("HomeDashboardPage: User data is null or undefined. Cannot render dashboard.");
+        // Fetch profile and quest stats
+        const dashboardRes = await axios.get<DashboardData>(
+          `${API_BASE_URL}/game/dashboard/`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        setProfile(dashboardRes.data.profile);
+        setCompletedQuests(dashboardRes.data.completed_quests_count);
+        setPendingQuests(dashboardRes.data.pending_quests_count);
+        setInProgressQuests(dashboardRes.data.in_progress_quests_count);
+
+        // Fetch all wands of the user
+        const wandsRes = await axios.get<any[]>(
+          `${API_BASE_URL}/game/wands/me/`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        setWands(Array.isArray(wandsRes.data) ? wandsRes.data.map(pw => pw.wand) : []);
+      } catch (err: any) {
+        setError(
+          err?.response?.data?.detail ||
+          err?.message ||
+          "Error loading dashboard"
+        );
+      } finally {
+        setLoading(false);
+        setMounted(true);
+      }
+    };
+    fetchDashboard();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center text-xl text-amber-200 bg-slate-900 p-4">
+        <Sparkles size={48} className="text-yellow-400 animate-spin mb-4" />
+        <p>Loading your dashboard...</p>
+      </div>
+    );
+  }
+
+  if (error || !profile) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center text-xl text-amber-200 bg-slate-900 p-4">
         <AlertTriangle size={48} className="text-red-400 mb-4" />
-        <p>Loading user data or authentication issue...</p>
+        <p>{error || "No dashboard data found."}</p>
         <p className="text-sm text-amber-300 mt-2">
           If this persists, please try logging in again.
         </p>
@@ -110,43 +187,11 @@ const HomeDashboardPage: React.FC<HomeDashboardPageProps> = ({ user }) => {
     );
   }
 
-  // Check for valid house AFTER confirming user object exists
-  if (!isValidHouse(user.house)) {
-    console.warn("HomeDashboardPage: Invalid or null house detected:", user.house, "User:", user.wizardName);
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center text-xl text-amber-200 bg-slate-900 p-4 text-center">
-        <AlertTriangle size={48} className="text-yellow-400 mb-4" />
-        <p className="mb-2">
-          Welcome, {user.wizardName || "Wizard"}!
-        </p>
-        <p>
-          Your house assignment is pending or invalid.
-        </p>
-        <p className="text-sm text-amber-300 mt-2">
-          Please complete the Sorting Hat quiz to be assigned to a house.
-        </p>
-        {/* Optional: Add a link to the sorting hat quiz page */}
-        {/* <Link to="/sorting-hat" className="mt-6 px-4 py-2 bg-amber-500 text-slate-900 rounded hover:bg-amber-400">
-          Go to Sorting Hat Quiz
-        </Link> */}
-      </div>
-    );
-  }
+  const house = isValidHouse(profile.house_display) ? profile.house_display : "Default";
+  const currentHouseStyle = houseStyles[house] || houseStyles.Default;
 
-  // At this point, user and user.house are considered valid
-  const currentHouseStyle = houseStyles[user.house] || houseStyles.Default; // Fallback for Default is fine here
-
-  // Defensive programming for potentially missing nested data
-  const xpProgress = user.xp ? (user.xp % 1000) / 10 : 0;
-  const nextLevelXP = user.xp ? 1000 - (user.xp % 1000) : 1000;
-  const wandDetails = user.wand 
-    ? `${user.wand.wood || 'Unknown Wood'}, ${user.wand.core || 'Unknown Core'}, ${user.wand.length || 'Unknown Length'}` 
-    : "Wand details not available.";
-  const userLevel = user.level ?? "N/A"; // Use nullish coalescing
-  const userXpDisplay = user.xp ?? "N/A";
-  const achievementsCount = user.achievements ?? "N/A";
-  const questsCompletedCount = user.questsCompleted ?? "N/A";
-
+  const xpProgress = typeof profile.xp === "number" ? (profile.xp % 1000) / 10 : 0;
+  const nextLevelXP = typeof profile.xp === "number" ? 1000 - (profile.xp % 1000) : 1000;
 
   const houseDescriptions: Record<HogwartsHouse, string> = {
     Gryffindor: "Where dwell the brave at heart, their daring, nerve, and chivalry set Gryffindors apart.",
@@ -155,13 +200,17 @@ const HomeDashboardPage: React.FC<HomeDashboardPageProps> = ({ user }) => {
     Hufflepuff: "You might belong in Hufflepuff, where they are just and loyal, those patient Hufflepuffs are true and unafraid of toil.",
   };
 
+  const wandDetails = wands.length > 0
+    ? wands.map(wand => `${wand.wood_type_display}, ${wand.core_display}, ${wand.length_inches}"`).join("; ")
+    : "No wand assigned yet.";
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-gray-900 to-stone-950 text-amber-50 relative overflow-hidden">
-      {user.active_theme?.image_url && (
+      {profile.avatar_url && (
         <div
           className="absolute inset-0 opacity-20"
           style={{
-            backgroundImage: `url(${user.active_theme.image_url})`,
+            backgroundImage: `url(${profile.avatar_url})`,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
           }}
@@ -187,21 +236,8 @@ const HomeDashboardPage: React.FC<HomeDashboardPageProps> = ({ user }) => {
       <div className="relative z-10 p-6 sm:p-8 lg:p-12">
         <header className={`text-center mb-16 ${mounted ? "animate-in fade-in slide-in-from-top-8" : "opacity-0"}`}>
           <div className="relative">
-            {user.active_accessories && user.active_accessories.length > 0 && (
-              <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 flex space-x-2">
-                {user.active_accessories.map((accessory) => (
-                  accessory?.image_url && // Add check for accessory image_url
-                  <img
-                    key={accessory.id}
-                    src={accessory.image_url}
-                    alt={accessory.name || 'Accessory'} // Add fallback for name
-                    className="w-12 h-12 rounded-full object-cover" // Added object-cover
-                  />
-                ))}
-              </div>
-            )}
             <h1 className="text-6xl sm:text-7xl lg:text-8xl font-bold bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-300 bg-clip-text text-transparent drop-shadow-2xl mb-4 leading-tight">
-              Welcome, {user.wizardName || "Wizard"} {/* Fallback for wizardName */}
+              Welcome, {profile.username || "Wizard"}
             </h1>
             <div className="absolute -top-4 -right-4 animate-spin-slow">
               <Sparkles className="text-amber-400" size={32} />
@@ -220,12 +256,12 @@ const HomeDashboardPage: React.FC<HomeDashboardPageProps> = ({ user }) => {
           <div className="relative z-10">
             <div className="flex items-center justify-between mb-4">
               <h2 className={`text-4xl md:text-5xl font-bold ${currentHouseStyle.text} drop-shadow-lg`}>
-                House: {user.house}
+                House: {profile.house_display || "Unassigned"}
               </h2>
               <Trophy className={`${currentHouseStyle.accent} animate-pulse`} size={32} />
             </div>
             <p className={`text-lg md:text-xl italic leading-relaxed ${currentHouseStyle.text} opacity-90`}>
-              {houseDescriptions[user.house]}
+              {houseDescriptions[house] || "Awaiting your house assignment."}
             </p>
           </div>
         </div>
@@ -249,15 +285,11 @@ const HomeDashboardPage: React.FC<HomeDashboardPageProps> = ({ user }) => {
               <Star className={`${currentHouseStyle.accent}`} size={28} />
               <h3 className={`text-2xl font-semibold ${currentHouseStyle.text}`}>Experience</h3>
             </div>
-            <p className={`${currentHouseStyle.text} text-sm`}>Level {userLevel} ({userXpDisplay} XP)</p>
-            {typeof user.xp === 'number' && ( // Only show progress if XP is a number
-              <>
-                <div className="mt-2 bg-gray-700/50 rounded-full h-2 overflow-hidden">
-                  <div className="bg-amber-400 h-full" style={{ width: `${xpProgress}%` }}></div>
-                </div>
-                <p className={`${currentHouseStyle.text} text-xs mt-1`}>{nextLevelXP} XP to next level</p>
-              </>
-            )}
+            <p className={`${currentHouseStyle.text} text-sm`}>Level {profile.level} ({profile.xp} XP)</p>
+            <div className="mt-2 bg-gray-700/50 rounded-full h-2 overflow-hidden">
+              <div className="bg-amber-400 h-full" style={{ width: `${xpProgress}%` }}></div>
+            </div>
+            <p className={`${currentHouseStyle.text} text-xs mt-1`}>{nextLevelXP} XP to next level</p>
           </div>
           <div
             className={`relative rounded-2xl p-6 shadow-xl border-2 ${currentHouseStyle.border} bg-gradient-to-br ${currentHouseStyle.bg} ${currentHouseStyle.glow} animate-in`}
@@ -265,10 +297,11 @@ const HomeDashboardPage: React.FC<HomeDashboardPageProps> = ({ user }) => {
           >
             <div className="flex items-center space-x-4 mb-4">
               <Trophy className={`${currentHouseStyle.accent}`} size={28} />
-              <h3 className={`text-2xl font-semibold ${currentHouseStyle.text}`}>Achievements</h3>
+              <h3 className={`text-2xl font-semibold ${currentHouseStyle.text}`}>Quests</h3>
             </div>
-            <p className={`${currentHouseStyle.text} text-sm`}>{achievementsCount} Achievements Unlocked</p>
-            <p className={`${currentHouseStyle.text} text-sm`}>{questsCompletedCount} Quests Completed</p>
+            <p className={`${currentHouseStyle.text} text-sm`}>{completedQuests} Quests Completed</p>
+            <p className={`${currentHouseStyle.text} text-sm`}>{pendingQuests} Quests Pending</p>
+            <p className={`${currentHouseStyle.text} text-sm`}>{inProgressQuests} Quests In Progress</p>
           </div>
         </div>
 
