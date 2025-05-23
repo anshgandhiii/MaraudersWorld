@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth.models import User
 from .models import (
     PlayerProfile, Wand, PlayerQuestProgress, Quest, GameItem, PlayerInventory,
-    MagicalLocation, MapReport, PlayerGPSTrace,
+    MagicalLocation, MapReport, PlayerGPSTrace, PlayerWand,
     HOUSE_CHOICES, WAND_CORE_CHOICES, WOOD_TYPE_CHOICES, QUEST_STATUS_CHOICES,
     POI_TYPE_CHOICES, ITEM_TYPE_CHOICES, MAP_REPORT_TYPE_CHOICES, MAP_REPORT_STATUS_CHOICES
 )
@@ -14,8 +14,23 @@ class WandSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Wand
-        fields = ['id', 'core', 'wood_type', 'length_inches', 'flexibility',
-                  'core_display', 'wood_type_display']
+        fields = ['id', 'core', 'core_display', 'wood_type', 'wood_type_display', 'length_inches', 'flexibility']
+
+class PlayerWandSerializer(serializers.ModelSerializer):
+    wand = WandSerializer(read_only=True)
+    wand_id = serializers.PrimaryKeyRelatedField(queryset=Wand.objects.all(), source='wand', write_only=True)
+    player_id = serializers.PrimaryKeyRelatedField(queryset=PlayerProfile.objects.all(), source='player', write_only=True, required=False)
+
+    class Meta:
+        model = PlayerWand
+        fields = ['id', 'player_id', 'wand', 'wand_id', 'acquired_at']
+        read_only_fields = ['id', 'acquired_at', 'wand']
+
+    def create(self, validated_data):
+        # Automatically set player from context if not provided
+        if 'player' not in validated_data:
+            validated_data['player'] = self.context['player']
+        return super().create(validated_data)
 
 class PlayerProfileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
@@ -118,7 +133,8 @@ class DashboardSerializer(serializers.Serializer):
     in_progress_quests_count = serializers.IntegerField(read_only=True)
 
     def to_representation(self, instance_profile):
-        user_wand = Wand.objects.filter(assigned_to=instance_profile).first()
+        player_wand = PlayerWand.objects.filter(player=instance_profile).select_related('wand').first()
+        user_wand = player_wand.wand if player_wand else None
         completed_quests_count = PlayerQuestProgress.objects.filter(
             player=instance_profile, status='COMPLETED'
         ).count()

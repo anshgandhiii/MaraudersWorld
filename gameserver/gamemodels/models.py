@@ -85,10 +85,20 @@ class Wand(models.Model):
     wood_type = models.CharField(max_length=30, choices=WOOD_TYPE_CHOICES)
     length_inches = models.DecimalField(max_digits=4, decimal_places=1, help_text="Wand length in inches")
     flexibility = models.CharField(max_length=50, help_text="e.g., 'Supple', 'Rigid', 'Bendy'")
-    assigned_to = models.ManyToManyField(PlayerProfile, related_name="wand", blank=True)
 
     def __str__(self):
         return f"{self.wood_type} wand with {self.core} ({self.length_inches}\" - {self.flexibility})"
+
+class PlayerWand(models.Model):
+    player = models.ForeignKey(PlayerProfile, on_delete=models.CASCADE, related_name='player_wands')
+    wand = models.ForeignKey(Wand, on_delete=models.CASCADE, related_name='player_wands')
+    acquired_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('player', 'wand')
+
+    def __str__(self):
+        return f"{self.player.user.username}'s {self.wand}"
 
 class MagicalLocation(models.Model):
     name = models.CharField(max_length=200)
