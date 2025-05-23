@@ -18,6 +18,8 @@ from .views import (
     QuestCompleteView,
     MapReportCreateView,
     PlayerGPSTraceCreateView,
+    PlayerWandListCreateView,
+    PlayerWandDetailView,
 )
 
 app_name = 'gamemodels'
@@ -41,4 +43,6 @@ urlpatterns = [
     path('quests/progress/<int:progress_id>/complete/', QuestCompleteView.as_view(), name='quest-complete'),
     path('map-reports/', MapReportCreateView.as_view(), name='map-report-create'),
     path('gps-traces/', PlayerGPSTraceCreateView.as_view(), name='gps-trace-create'),
+    path('wands/me/', PlayerWandListCreateView.as_view(), name='player-wand-list-create'),
+    path('wands/me/<int:pk>/', PlayerWandDetailView.as_view(), name='player-wand-detail'),
 ]
