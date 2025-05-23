@@ -28,7 +28,7 @@ interface LoginPageProps {
   onLoginSuccess: (user: User, accessToken: string, refreshToken: string) => void;
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://maraudersworld.onrender.com';
 
 const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
   const [identifier, setIdentifier] = useState('');
@@ -82,8 +82,19 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
         id: decodedToken.user_id,
         username: decodedToken.username,
         email: decodedToken.email,
-        // Add other fields if they are in the token and your User type
-        // e.g., house: decodedToken.house
+        wizardName: '',
+        house: null,
+        xp: 0,
+        level: 0,
+        wand: {
+          wood: '',
+          core: '',
+          length: ''
+        },
+        achievements: 0,
+        questsCompleted: 0,
+        currencies: [],
+        active_accessories: []
       };
 
       console.log('Login successful. Decoded User Info:', user);
