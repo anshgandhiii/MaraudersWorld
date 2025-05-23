@@ -65,8 +65,8 @@ const MapPage: React.FC<MapPageProps> = ({ user }) => {
   const mapInstanceRef = useRef<H.Map | null>(null);
   const markerRef = useRef<H.map.Marker | null>(null);
   const defaultLayersRef = useRef<H.service.DefaultLayers | null>(null);
-  const uiRef = useRef<H.ui.UI | null>(null);
-  const isMapActiveRef = useRef<boolean>(false);
+  const uiRef = useRef<H.ui.UI | null>(null); // Ref for HERE UI instance
+  const isMapActiveRef = useRef<boolean>(false); // Ref to track if map is active and component mounted
 
   const updateUserLocationAPI = async (lat: number, lon: number) => {
     const token = localStorage.getItem('accessToken');
@@ -171,23 +171,14 @@ const MapPage: React.FC<MapPageProps> = ({ user }) => {
 
     new H.mapevents.Behavior(new H.mapevents.MapEvents(map));
     const ui = H.ui.UI.createDefault(map, layers);
-    uiRef.current = ui;
+    uiRef.current = ui; // Store UI instance
 
-    isMapActiveRef.current = true;
+    isMapActiveRef.current = true; // <<< SET FLAG HERE, after all map objects are created
     console.log('[EFFECT Map Setup] HERE Maps setup complete. Map is active.');
 
-    // Attempt to force a resize after a brief moment to ensure layout is stable
-    const resizeTimer = setTimeout(() => {
-        if (isMapActiveRef.current && mapInstanceRef.current && typeof mapInstanceRef.current.getViewPort === 'function') {
-            mapInstanceRef.current.getViewPort().resize();
-            console.log('[EFFECT Map Setup] Delayed map viewport resize triggered.');
-        }
-    }, 150); // 150ms delay, can be adjusted, e.g., 100 or 200
-
     return () => {
-      clearTimeout(resizeTimer);
       console.log('[EFFECT Map Setup] Cleanup: Disposing map, UI, and clearing active flag.');
-      isMapActiveRef.current = false;
+      isMapActiveRef.current = false; // <<< CLEAR FLAG FIRST
       
       if (uiRef.current) {
           uiRef.current.dispose();
@@ -197,42 +188,22 @@ const MapPage: React.FC<MapPageProps> = ({ user }) => {
         mapInstanceRef.current.dispose();
         mapInstanceRef.current = null;
       }
+      // platformRef.current = null; // Platform can often be reused if other maps need it
+      // defaultLayersRef.current = null;
     };
-  }, [HERE_API_KEY]);
-
-  // Effect for handling window resize
-  useEffect(() => {
-    const handleResize = () => {
-        if (isMapActiveRef.current && mapInstanceRef.current && typeof mapInstanceRef.current.getViewPort === 'function') {
-            mapInstanceRef.current.getViewPort().resize();
-            console.log('[Window Resize] Map viewport updated.');
-        }
-    };
-
-    window.addEventListener('resize', handleResize);
-    // Initial resize call in case the map is already set up when this effect runs
-    // or if the container size was determined by something that resolved after map setup
-    // but before this effect. A small delay can help here too.
-    const initialResizeTimer = setTimeout(handleResize, 200);
-
-
-    return () => {
-        clearTimeout(initialResizeTimer);
-        window.removeEventListener('resize', handleResize);
-    };
-  }, []); // Runs once on mount and cleans up on unmount
-
+  }, [HERE_API_KEY]); // Dependency: API Key
 
   // Effect for updating map center, marker, and base layer
   useEffect(() => {
-    if (!isMapActiveRef.current) {
+    if (!isMapActiveRef.current) { // <<< CHECK FLAG HERE
         console.log('[EFFECT Marker/View] Skipping: Map not active or component unmounting/disposed.');
         return;
     }
 
-    const map = mapInstanceRef.current;
-    const layers = defaultLayersRef.current;
+    const map = mapInstanceRef.current; // Should be valid if flag is true
+    const layers = defaultLayersRef.current; // Should be valid
 
+    // This extra check is belt-and-suspenders, isMapActiveRef should cover it.
     if (!map || !layers) {
         console.log('[EFFECT Marker/View] Map or layers unexpectedly null despite active flag. Exiting.');
         return;
