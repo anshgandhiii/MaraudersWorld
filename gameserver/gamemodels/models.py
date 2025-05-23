@@ -54,6 +54,25 @@ MAP_REPORT_STATUS_CHOICES = [
     ('NEEDS_MORE_INFO', 'Needs More Information'),
 ]
 
+WAND_CORE_CHOICES = [
+    ('PHOENIX_FEATHER', 'Phoenix Feather'),
+    ('DRAGON_HEARTSTRING', 'Dragon Heartstring'),
+    ('UNICORN_HAIR', 'Unicorn Hair'),
+    ('VEELA_HAIR', 'Veela Hair'),
+    ('THUNDERBIRD_TAIL', 'Thunderbird Tail Feather'),
+    # Add more if needed
+]
+
+WOOD_TYPE_CHOICES = [
+    ('HOLLY', 'Holly'),
+    ('OAK', 'Oak'),
+    ('YEW', 'Yew'),
+    ('ELDER', 'Elder'),
+    ('HAWTHORN', 'Hawthorn'),
+    # Add more if needed
+]
+
+
 class PlayerProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
     house = models.CharField(max_length=20, choices=HOUSE_CHOICES, null=True, blank=True)
@@ -67,6 +86,19 @@ class PlayerProfile(models.Model):
 
     def __str__(self):
         return f"{self.user.username}'s Profile ({self.house})"
+
+
+class Wand(models.Model):
+    core = models.CharField(max_length=30, choices=WAND_CORE_CHOICES)
+    wood_type = models.CharField(max_length=30, choices=WOOD_TYPE_CHOICES)
+    length_inches = models.DecimalField(max_digits=4, decimal_places=1, help_text="Wand length in inches")
+    flexibility = models.CharField(max_length=50, help_text="e.g., 'Supple', 'Rigid', 'Bendy'")
+    assigned_to = models.ManyToManyField(PlayerProfile, related_name="wand", blank=True)
+
+
+    def __str__(self):
+        return f"{self.wood_type} wand with {self.core} ({self.length_inches}\" - {self.flexibility})"
+
 
 class MagicalLocation(models.Model):
     name = models.CharField(max_length=200)

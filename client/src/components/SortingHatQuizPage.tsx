@@ -1,7 +1,8 @@
-// src/pages/SortingHatQuizPage.tsx
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { User, HogwartsHouse } from '../types';
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 
 interface QuizQuestion {
   id: number;
@@ -38,8 +39,22 @@ const quizQuestions: QuizQuestion[] = [
       { text: "My Loyalty", housePoints: { Hufflepuff: 3 } },
     ],
   },
-  // Add more questions for better sorting
 ];
+
+// Define types to match backend PlayerProfileSerializer
+interface PlayerProfile {
+  id: number;
+  username: string;
+  email: string;
+  house: HogwartsHouse | null;
+  house_display: string | null;
+  level: number;
+  xp: number;
+  avatar_url: string | null;
+  current_latitude: number | null;
+  current_longitude: number | null;
+  last_seen: string;
+}
 
 interface SortingHatQuizPageProps {
   user: User;
@@ -63,17 +78,53 @@ const SortingHatQuizPage: React.FC<SortingHatQuizPageProps> = ({ user, onHouseAs
     if (currentQuestionIndex < quizQuestions.length - 1) {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
     } else {
-      // Quiz finished, determine house
-      determineHouse(newAnswers);
+      determineHouseAfterQuiz(newAnswers);
     }
   };
 
-  const determineHouse = async (finalScores: Partial<Record<HogwartsHouse, number>>) => {
+  const assignHouseToProfile = async (houseToAssign: HogwartsHouse) => {
     setIsLoading(true);
     setError(null);
+    try {
+      const accessToken = localStorage.getItem('accessToken');
+      if (!accessToken) {
+        throw new Error("Authentication token not found. Please log in again.");
+      }
+
+      const response = await fetch(`${API_BASE_URL}/game/profile/`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ house: houseToAssign.toUpperCase() }), // Backend expects uppercase enum values
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || `Failed to assign house. Server responded with ${response.status}`);
+      }
+
+      const updatedProfile: PlayerProfile = await response.json();
+      console.log(`User ${user.username} sorted into ${houseToAssign}. Profile updated:`, updatedProfile);
+      
+      onHouseAssigned(houseToAssign);
+      navigate('/house-reveal');
+    } catch (err) {
+      let message = 'Failed to save house assignment. Please try again.';
+      if (err instanceof Error) {
+        message = err.message;
+      }
+      setError(message);
+      console.error("Error assigning house:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const determineHouseAfterQuiz = (finalScores: Partial<Record<HogwartsHouse, number>>) => {
     let sortedHouse: HogwartsHouse = 'Gryffindor'; // Default
     let maxScore = -1;
-
     const houses: HogwartsHouse[] = ['Gryffindor', 'Hufflepuff', 'Ravenclaw', 'Slytherin'];
     const tiedHouses: HogwartsHouse[] = [];
 
@@ -81,56 +132,23 @@ const SortingHatQuizPage: React.FC<SortingHatQuizPageProps> = ({ user, onHouseAs
       const score = finalScores[house] || 0;
       if (score > maxScore) {
         maxScore = score;
-        tiedHouses.length = 0; // Clear previous ties
+        tiedHouses.length = 0;
         tiedHouses.push(house);
-      } else if (score === maxScore) {
+      } else if (score === maxScore && score > 0) {
         tiedHouses.push(house);
       }
     }
     
     if (tiedHouses.length > 0) {
-        sortedHouse = tiedHouses[Math.floor(Math.random() * tiedHouses.length)]; // Pick random from ties
-    } else {
-        // Fallback if something went wrong, though tiedHouses should always have at least one
-        sortedHouse = houses[Math.floor(Math.random() * houses.length)];
+      sortedHouse = tiedHouses[Math.floor(Math.random() * tiedHouses.length)];
     }
-
-
-    // --- MOCK API CALL ---
-    // Replace with API call to save house to user profile
-    // e.g., await fetch(`/api/player/${user.id}/assign-house/`, { method: 'POST', body: JSON.stringify({ house: sortedHouse }) });
-    try {
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate network delay
-      console.log(`User ${user.username} sorted into ${sortedHouse}`);
-      onHouseAssigned(sortedHouse);
-      navigate('/house-reveal');
-    } catch (err) {
-      setError('Failed to save house. Please try again.');
-      console.error("Error assigning house:", err);
-    } finally {
-      setIsLoading(false);
-    }
-    // --- END MOCK API CALL ---
+    assignHouseToProfile(sortedHouse);
   };
 
-  const handleRandomAssignment = async () => {
-    setIsLoading(true);
-    setError(null);
+  const handleRandomAssignment = () => {
     const houses: HogwartsHouse[] = ['Gryffindor', 'Hufflepuff', 'Ravenclaw', 'Slytherin'];
     const randomHouse = houses[Math.floor(Math.random() * houses.length)];
-
-    // --- MOCK API CALL ---
-    try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      console.log(`User ${user.username} randomly sorted into ${randomHouse}`);
-      onHouseAssigned(randomHouse);
-      navigate('/house-reveal');
-    } catch (err) {
-      setError('Failed to save house. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-    // --- END MOCK API CALL ---
+    assignHouseToProfile(randomHouse);
   };
 
   const currentQuestion = quizQuestions[currentQuestionIndex];
@@ -164,11 +182,11 @@ const SortingHatQuizPage: React.FC<SortingHatQuizPageProps> = ({ user, onHouseAs
         )}
 
         {currentQuestionIndex >= quizQuestions.length && !isLoading && (
-            <p className="text-yellow-300 text-xl text-center my-8">The Sorting Hat is deliberating...</p>
+          <p className="text-yellow-300 text-xl text-center my-8">The Sorting Hat is deliberating...</p>
         )}
 
         {isLoading && (
-            <p className="text-yellow-300 text-xl text-center my-8 animate-pulse">Sorting...</p>
+          <p className="text-yellow-300 text-xl text-center my-8 animate-pulse">Sorting...</p>
         )}
 
         <div className="mt-10 text-center">
