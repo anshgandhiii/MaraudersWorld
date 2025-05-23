@@ -3,6 +3,8 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { User, HogwartsHouse } from '../types';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+
 interface QuizQuestion {
   id: number;
   text: string;
@@ -38,7 +40,6 @@ const quizQuestions: QuizQuestion[] = [
       { text: "My Loyalty", housePoints: { Hufflepuff: 3 } },
     ],
   },
-  // Add more questions for better sorting
 ];
 
 interface SortingHatQuizPageProps {
@@ -63,17 +64,57 @@ const SortingHatQuizPage: React.FC<SortingHatQuizPageProps> = ({ user, onHouseAs
     if (currentQuestionIndex < quizQuestions.length - 1) {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
     } else {
-      // Quiz finished, determine house
-      determineHouse(newAnswers);
+      determineHouseAfterQuiz(newAnswers);
     }
   };
 
-  const determineHouse = async (finalScores: Partial<Record<HogwartsHouse, number>>) => {
+  const assignHouseToProfile = async (houseToAssign: HogwartsHouse) => {
     setIsLoading(true);
     setError(null);
+    try {
+      const accessToken = localStorage.getItem('accessToken');
+      if (!accessToken) {
+        throw new Error("Authentication token not found. Please log in again.");
+      }
+
+      // API call to update the user's profile with the house
+      // Your backend should have an endpoint like PATCH /api/profiles/{user_id}/ or /api/profiles/me/
+      // that accepts a 'house' field.
+      const response = await fetch(`${API_BASE_URL}/game/profile/`, { // Or your specific endpoint
+        method: 'PATCH', // Or PUT if you're replacing the whole profile
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ house: houseToAssign }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || `Failed to assign house. Server responded with ${response.status}`);
+      }
+
+      const updatedProfileData = await response.json(); // Contains the updated profile
+      console.log(`User ${user.username} sorted into ${houseToAssign}. Profile updated:`, updatedProfileData);
+      
+      onHouseAssigned(houseToAssign); // Update the global state in App.tsx
+      navigate('/house-reveal'); // Navigate to reveal page
+
+    } catch (err) {
+      let message = 'Failed to save house. Please try again.';
+      if (err instanceof Error) {
+        message = err.message;
+      }
+      setError(message);
+      console.error("Error assigning house:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const determineHouseAfterQuiz = (finalScores: Partial<Record<HogwartsHouse, number>>) => {
     let sortedHouse: HogwartsHouse = 'Gryffindor'; // Default
     let maxScore = -1;
-
     const houses: HogwartsHouse[] = ['Gryffindor', 'Hufflepuff', 'Ravenclaw', 'Slytherin'];
     const tiedHouses: HogwartsHouse[] = [];
 
@@ -81,7 +122,7 @@ const SortingHatQuizPage: React.FC<SortingHatQuizPageProps> = ({ user, onHouseAs
       const score = finalScores[house] || 0;
       if (score > maxScore) {
         maxScore = score;
-        tiedHouses.length = 0; // Clear previous ties
+        tiedHouses.length = 0;
         tiedHouses.push(house);
       } else if (score === maxScore) {
         tiedHouses.push(house);
@@ -89,48 +130,17 @@ const SortingHatQuizPage: React.FC<SortingHatQuizPageProps> = ({ user, onHouseAs
     }
     
     if (tiedHouses.length > 0) {
-        sortedHouse = tiedHouses[Math.floor(Math.random() * tiedHouses.length)]; // Pick random from ties
+        sortedHouse = tiedHouses[Math.floor(Math.random() * tiedHouses.length)];
     } else {
-        // Fallback if something went wrong, though tiedHouses should always have at least one
         sortedHouse = houses[Math.floor(Math.random() * houses.length)];
     }
-
-
-    // --- MOCK API CALL ---
-    // Replace with API call to save house to user profile
-    // e.g., await fetch(`/api/player/${user.id}/assign-house/`, { method: 'POST', body: JSON.stringify({ house: sortedHouse }) });
-    try {
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate network delay
-      console.log(`User ${user.username} sorted into ${sortedHouse}`);
-      onHouseAssigned(sortedHouse);
-      navigate('/house-reveal');
-    } catch (err) {
-      setError('Failed to save house. Please try again.');
-      console.error("Error assigning house:", err);
-    } finally {
-      setIsLoading(false);
-    }
-    // --- END MOCK API CALL ---
+    assignHouseToProfile(sortedHouse);
   };
 
-  const handleRandomAssignment = async () => {
-    setIsLoading(true);
-    setError(null);
+  const handleRandomAssignment = () => {
     const houses: HogwartsHouse[] = ['Gryffindor', 'Hufflepuff', 'Ravenclaw', 'Slytherin'];
     const randomHouse = houses[Math.floor(Math.random() * houses.length)];
-
-    // --- MOCK API CALL ---
-    try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      console.log(`User ${user.username} randomly sorted into ${randomHouse}`);
-      onHouseAssigned(randomHouse);
-      navigate('/house-reveal');
-    } catch (err) {
-      setError('Failed to save house. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-    // --- END MOCK API CALL ---
+    assignHouseToProfile(randomHouse);
   };
 
   const currentQuestion = quizQuestions[currentQuestionIndex];
