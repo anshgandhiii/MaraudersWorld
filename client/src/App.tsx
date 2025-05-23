@@ -5,9 +5,11 @@ import SortingHatQuizPage from './components/SortingHatQuizPage';
 import HouseRevealPage from './components/HouseRevealPage';
 import HomeDashboardPage from './pages/Dashboard';
 import InventoryPage from './pages/InventoryPage';
+import MapPage from './pages/MapPage';
 import { useState, useEffect } from 'react';
 import type { User, HogwartsHouse } from './types';
 import { jwtDecode } from 'jwt-decode';
+import ErrorBoundary from './components/ErrorBoundary';
 
 interface DecodedToken {
   user_id: number;
@@ -19,6 +21,19 @@ interface DecodedToken {
 }
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+
+// Normalize house name to title case
+const normalizeHouseName = (house: string | null): HogwartsHouse | null => {
+  if (!house) return null;
+  const houseMap: Record<string, HogwartsHouse> = {
+    ravenclaw: 'Ravenclaw',
+    gryffindor: 'Gryffindor',
+    hufflepuff: 'Hufflepuff',
+    slytherin: 'Slytherin',
+  };
+  const normalized = house.toLowerCase();
+  return houseMap[normalized] || null;
+};
 
 function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -42,20 +57,29 @@ function App() {
         return null;
       }
       const profileData = await response.json();
+      const normalizedHouse = normalizeHouseName(profileData.house);
+      if (!normalizedHouse && profileData.house) {
+        console.warn("Invalid house value received:", profileData.house);
+      }
       const user: User = {
         id: profileData.user.id,
         username: profileData.user.username,
         email: profileData.user.email,
         wizardName: profileData.user.wizard_name || profileData.user.username,
-        house: profileData.house as HogwartsHouse || null,
+        house: normalizedHouse,
         xp: profileData.xp || 0,
         level: profileData.level || 1,
         wand: profileData.wand || { wood: '', core: '', length: '' },
         achievements: profileData.achievements || 0,
         questsCompleted: profileData.quests_completed || 0,
+        currencies: profileData.currencies || [],
+        active_theme: profileData.active_theme,
+        active_accessories: profileData.active_accessories || [],
+        current_latitude: profileData.current_latitude,
+        current_longitude: profileData.current_longitude,
       };
       setCurrentUser(user);
-      setAssignedHouse(user.house);
+      setAssignedHouse(normalizedHouse);
       console.log("Profile fetched successfully:", profileData);
       return user;
     } catch (error) {
@@ -88,6 +112,10 @@ function App() {
             wand: { wood: '', core: '', length: '' },
             achievements: 0,
             questsCompleted: 0,
+            currencies: [],
+            active_accessories: [],
+            current_latitude: undefined,
+            current_longitude: undefined,
           };
           setCurrentUser(userFromToken);
           await fetchUserProfile(userFromToken.id, accessToken);
@@ -103,12 +131,16 @@ function App() {
   }, []);
 
   const handleSignupSuccess = (user: User, accessToken: string, refreshToken: string) => {
+    localStorage.setItem('accessToken', accessToken);
+    localStorage.setItem('refreshToken', refreshToken);
     setCurrentUser(user);
     setAssignedHouse(null);
     setIsLoadingApp(false);
   };
 
   const handleLoginSuccess = async (user: User, accessToken: string, refreshToken: string) => {
+    localStorage.setItem('accessToken', accessToken);
+    localStorage.setItem('refreshToken', refreshToken);
     setCurrentUser(user);
     setIsLoadingApp(true);
     await fetchUserProfile(user.id, accessToken);
@@ -163,11 +195,19 @@ function App() {
             } />
             <Route path="/dashboard" element={
               !currentUser ? <Navigate to="/login" /> :
-              (!assignedHouse ? <Navigate to="/sorting-hat" /> : <HomeDashboardPage user={currentUser} />)
+              (!assignedHouse ? <Navigate to="/sorting-hat" /> : (
+                <ErrorBoundary>
+                  <HomeDashboardPage user={currentUser} />
+                </ErrorBoundary>
+              ))
             } />
             <Route path="/inventory" element={
               !currentUser ? <Navigate to="/login" /> :
               (!assignedHouse ? <Navigate to="/sorting-hat" /> : <InventoryPage user={currentUser} />)
+            } />
+            <Route path="/map" element={
+              !currentUser ? <Navigate to="/login" /> :
+              (!assignedHouse ? <Navigate to="/sorting-hat" /> : <MapPage user={currentUser} />)
             } />
             <Route path="*" element={
               <Navigate to={currentUser ? (assignedHouse ? "/dashboard" : "/sorting-hat") : "/login"} />
