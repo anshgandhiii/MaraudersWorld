@@ -28,6 +28,8 @@ DEBUG = True
 
 ALLOWED_HOSTS = []
 
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 
 # Application definition
 
@@ -126,11 +128,12 @@ WSGI_APPLICATION = 'game.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+import dj_database_url
+
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    'default': dj_database_url.config(
+        default='postgres://avnadmin:AVNS_FOmFByDig3mar7AgTgI@maraudersworld-cfaca92-spitfesthub-35ad.l.aivencloud.com:10058/defaultdb?sslmode=require'
+    )
 }
 
 
