@@ -1,93 +1,124 @@
-// src/App.tsx
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import SignupPage from './components/SignupPage';
-import LoginPage from './components/LoginPage'; // <-- IMPORT LOGIN PAGE
+import LoginPage from './components/LoginPage';
 import SortingHatQuizPage from './components/SortingHatQuizPage';
 import HouseRevealPage from './components/HouseRevealPage';
-import GameMapPage from './components/GameMapPage';
-import { useState, useEffect } from 'react'; // <-- IMPORT useEffect
+import HomeDashboardPage from './pages/Dashboard';
+import { useState, useEffect } from 'react';
 import type { User, HogwartsHouse } from './types';
+import { jwtDecode } from 'jwt-decode';
+
+interface DecodedToken {
+  user_id: number;
+  username: string;
+  email: string;
+  exp: number;
+  iat: number;
+  jti: string;
+}
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 
 function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [assignedHouse, setAssignedHouse] = useState<HogwartsHouse | null>(null);
-  const [isLoadingProfile, setIsLoadingProfile] = useState(true); // To manage initial profile load
+  const [isLoadingApp, setIsLoadingApp] = useState(true);
 
-  // This function would ideally fetch the full user profile from your backend
-  // including their assigned house after a successful login or on app load if tokens exist.
-  const fetchUserProfile = async (userId: number, token: string) => {
+  const fetchUserProfile = async (userId: number, token: string): Promise<User | null> => {
     console.log("Fetching user profile for user ID:", userId);
-    // --- MOCK API CALL to get user profile (including house) ---
-    // Example:
-    // const response = await fetch(`/api/profiles/${userId}/`, {
-    //   headers: { 'Authorization': `Bearer ${token}` }
-    // });
-    // if (response.ok) {
-    //   const profileData = await response.json();
-    //   setCurrentUser({id: profileData.user.id, username: profileData.user.username, email: profileData.user.email});
-    //   setAssignedHouse(profileData.house as HogwartsHouse || null);
-    // } else {
-    //   console.error("Failed to fetch profile");
-    //   // Handle token expiry or invalid token - potentially log out user
-    //   localStorage.removeItem('accessToken');
-    //   localStorage.removeItem('refreshToken');
-    //   setCurrentUser(null);
-    //   setAssignedHouse(null);
-    // }
-    // --- Mock ---
-    await new Promise(resolve => setTimeout(resolve, 500));
-    // Simulate a user who has already been sorted
-    if (userId === 1) { // Assuming our mock login user has ID 1
-        // Check a mock flag or make a "profile" lookup
-        const mockProfile = { house: 'Gryffindor' as HogwartsHouse }; // Or null if not sorted
-        setAssignedHouse(mockProfile.house);
-        console.log("Mock profile fetched, house:", mockProfile.house);
-    } else {
-        setAssignedHouse(null); // Default for other users or if no house yet
-        console.log("Mock profile fetched, no house assigned yet.");
+    try {
+      const response = await fetch(`${API_BASE_URL}/game/profile/`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          console.error("Unauthorized or Token expired while fetching profile.");
+          handleLogout();
+        } else {
+          console.error("Failed to fetch profile, status:", response.status);
+        }
+        return null;
+      }
+      const profileData = await response.json();
+      const user: User = {
+        id: profileData.user.id,
+        username: profileData.user.username,
+        email: profileData.user.email,
+        wizardName: profileData.user.wizard_name || profileData.user.username,
+        house: profileData.house as HogwartsHouse || null,
+        xp: profileData.xp || 0,
+        level: profileData.level || 1,
+        wand: profileData.wand || { wood: '', core: '', length: '' },
+        achievements: profileData.achievements || 0,
+        questsCompleted: profileData.quests_completed || 0,
+      };
+      setCurrentUser(user);
+      setAssignedHouse(user.house);
+      console.log("Profile fetched successfully:", profileData);
+      return user;
+    } catch (error) {
+      console.error("Error fetching user profile:", error);
+      return null;
     }
-    // --- End Mock ---
   };
 
-
   useEffect(() => {
-    const token = localStorage.getItem('accessToken');
-    // Here you would also validate the token and get user details from it or an API
-    // For simplicity, we'll just check if a token exists and assume it's valid for this mock
-    if (token) {
-      // Decode token to get user ID or make an API call to /api/users/me/
-      // Mocking user retrieval based on token presence
-      const mockUserFromToken: User = { id: 1, username: "testuserFromToken", email: "test@example.com" }; // You'd get this from token or API
-      setCurrentUser(mockUserFromToken);
-      fetchUserProfile(mockUserFromToken.id, token).finally(() => setIsLoadingProfile(false));
-    } else {
-      setIsLoadingProfile(false);
-    }
+    const initializeAuth = async () => {
+      const accessToken = localStorage.getItem('accessToken');
+      if (accessToken) {
+        try {
+          const decodedToken = jwtDecode<DecodedToken>(accessToken);
+          if (decodedToken.exp * 1000 < Date.now()) {
+            console.log("Access token expired on app load.");
+            handleLogout();
+            setIsLoadingApp(false);
+            return;
+          }
+
+          const userFromToken: User = {
+            id: decodedToken.user_id,
+            username: decodedToken.username,
+            email: decodedToken.email,
+            wizardName: '',
+            house: null,
+            xp: 0,
+            level: 1,
+            wand: { wood: '', core: '', length: '' },
+            achievements: 0,
+            questsCompleted: 0,
+          };
+          setCurrentUser(userFromToken);
+          await fetchUserProfile(userFromToken.id, accessToken);
+        } catch (error) {
+          console.error("Error decoding token or fetching profile on app load:", error);
+          handleLogout();
+        }
+      }
+      setIsLoadingApp(false);
+    };
+
+    initializeAuth();
   }, []);
 
-
   const handleSignupSuccess = (user: User, accessToken: string, refreshToken: string) => {
-    // Tokens are already stored by SignupPage in this example
-    // Or you can pass them here and store them
     setCurrentUser(user);
-    // After signup, user definitely won't have a house yet
     setAssignedHouse(null);
-    setIsLoadingProfile(false); // Profile is new, no need to fetch old house
-    // Navigation will be handled by Routes logic based on currentUser and !assignedHouse
+    setIsLoadingApp(false);
   };
 
   const handleLoginSuccess = async (user: User, accessToken: string, refreshToken: string) => {
-    // Tokens are already stored by LoginPage in this example
     setCurrentUser(user);
-    setIsLoadingProfile(true); // Set loading while we fetch the profile
-    await fetchUserProfile(user.id, accessToken); // Fetch profile which sets the house
-    setIsLoadingProfile(false);
-    // Navigation will be handled by Routes logic below
+    setIsLoadingApp(true);
+    await fetchUserProfile(user.id, accessToken);
+    setIsLoadingApp(false);
   };
 
   const handleHouseAssigned = (house: HogwartsHouse) => {
     setAssignedHouse(house);
-    // API call to save house to backend is done in SortingHatQuizPage
+    if (currentUser) {
+      setCurrentUser({ ...currentUser, house });
+    }
   };
 
   const handleLogout = () => {
@@ -95,11 +126,9 @@ function App() {
     localStorage.removeItem('refreshToken');
     setCurrentUser(null);
     setAssignedHouse(null);
-    // Navigate to login, will be handled by Routes
   };
 
-
-  if (isLoadingProfile) {
+  if (isLoadingApp) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-900">
         <p className="text-yellow-400 text-2xl animate-pulse font-['Lumos']">Loading Ancient Tomes...</p>
@@ -110,34 +139,36 @@ function App() {
   return (
     <Router>
       <div className="min-h-screen bg-gray-900 text-gray-100 font-serif">
-        {/* Basic Nav for Logout - Can be improved */}
         {currentUser && (
-            <nav className="p-4 bg-gray-800/50 text-right">
-                <span className="text-gray-300 mr-4">Welcome, {currentUser.username}!</span>
-                <button onClick={handleLogout} className="text-yellow-400 hover:text-yellow-200">Logout</button>
-            </nav>
+          <nav className="p-4 bg-gray-800/50 text-right fixed top-0 left-0 right-0 z-50">
+            <span className="text-gray-300 mr-4">Welcome, Wizard {currentUser.wizardName}! {assignedHouse && `(${assignedHouse})`}</span>
+            <button onClick={handleLogout} className="text-yellow-400 hover:text-yellow-200">Logout</button>
+          </nav>
         )}
-        <Routes>
-          <Route path="/login" element={
-            currentUser ? <Navigate to={assignedHouse ? "/game" : "/sorting-hat"} /> : <LoginPage onLoginSuccess={handleLoginSuccess} />
-          } />
-          <Route path="/signup" element={
-            currentUser ? <Navigate to={assignedHouse ? "/game" : "/sorting-hat"} /> : <SignupPage onSignupSuccess={handleSignupSuccess} />
-          } />
-          <Route path="/sorting-hat" element={
-            !currentUser ? <Navigate to="/login" /> : (assignedHouse ? <Navigate to="/house-reveal"/> : <SortingHatQuizPage user={currentUser} onHouseAssigned={handleHouseAssigned} />)
-          } />
-          <Route path="/house-reveal" element={
-            !currentUser || !assignedHouse ? <Navigate to="/login" /> : <HouseRevealPage house={assignedHouse} />
-          } />
-          <Route path="/game" element={
-            !currentUser ? <Navigate to="/login" /> : (!assignedHouse ? <Navigate to="/sorting-hat" /> : <GameMapPage />)
-          } />
-          {/* Default route */}
-          <Route path="*" element={
-            <Navigate to={currentUser ? (assignedHouse ? "/game" : "/sorting-hat") : "/login"} />
-          }/>
-        </Routes>
+        <div className={currentUser ? "pt-16" : ""}>
+          <Routes>
+            <Route path="/login" element={
+              currentUser ? <Navigate to={assignedHouse ? "/dashboard" : "/sorting-hat"} /> : <LoginPage onLoginSuccess={handleLoginSuccess} />
+            } />
+            <Route path="/signup" element={
+              currentUser ? <Navigate to="/sorting-hat" /> : <SignupPage onSignupSuccess={handleSignupSuccess} />
+            } />
+            <Route path="/sorting-hat" element={
+              !currentUser ? <Navigate to="/login" /> :
+              (assignedHouse ? <Navigate to="/house-reveal"/> : <SortingHatQuizPage user={currentUser} onHouseAssigned={handleHouseAssigned} />)
+            } />
+            <Route path="/house-reveal" element={
+              !currentUser || !assignedHouse ? <Navigate to="/login" /> : <HouseRevealPage house={assignedHouse} />
+            } />
+            <Route path="/dashboard" element={
+              !currentUser ? <Navigate to="/login" /> :
+              (!assignedHouse ? <Navigate to="/sorting-hat" /> : <HomeDashboardPage user={currentUser} />)
+            } />
+            <Route path="*" element={
+              <Navigate to={currentUser ? (assignedHouse ? "/dashboard" : "/sorting-hat") : "/login"} />
+            }/>
+          </Routes>
+        </div>
       </div>
     </Router>
   );
