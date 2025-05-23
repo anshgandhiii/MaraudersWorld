@@ -28,7 +28,7 @@ function App() {
   const fetchUserProfile = async (userId: number, token: string): Promise<User | null> => {
     console.log("Fetching user profile for user ID:", userId);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/profiles/${userId}/`, {
+      const response = await fetch(`${API_BASE_URL}/game/profile/`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
 
