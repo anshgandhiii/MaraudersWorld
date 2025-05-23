@@ -1,14 +1,37 @@
 // src/components/LoginPage.tsx
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { User } from '../types'; // Assuming User interface is in src/types.ts
+import { jwtDecode } from 'jwt-decode'; // Import jwt-decode
+import type { User } from '../types'; // Assuming User interface is in src/types/game.ts
+
+// Define the expected API response structure for login (standard Simple JWT)
+interface LoginApiResponse {
+  access: string;
+  refresh: string;
+  // User object is NOT expected directly in the login response anymore
+}
+
+// Define the structure of the decoded JWT payload (customize based on your MyTokenObtainPairSerializer claims)
+interface DecodedToken {
+  user_id: number;
+  username: string;
+  email: string;
+  // Add any other custom claims you put in the token
+  exp: number; // Expiration timestamp
+  iat: number; // Issued at timestamp
+  jti: string; // JWT ID
+  // house?: string | null; // Example if you added house to token claims
+}
+
 
 interface LoginPageProps {
   onLoginSuccess: (user: User, accessToken: string, refreshToken: string) => void;
 }
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+
 const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
-  const [identifier, setIdentifier] = useState(''); // Can be username or email
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -18,63 +41,72 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     setError(null);
     setIsLoading(true);
 
-    // --- MOCK API CALL for JWT Authentication ---
-    // Replace this with your actual API call to Django for token authentication
     try {
-      // Example:
-      // const response = await fetch('/api/auth/token/', { // Your DRF JWT endpoint
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ username: identifier, password }) // or email: identifier
-      // });
+      const payload = {
+        // Assuming your backend's TokenObtainPairSerializer expects 'username'
+        // and can handle it if 'identifier' is an email (via custom auth backend or serializer logic)
+        username: identifier,
+        password: password,
+      };
 
-      // if (!response.ok) {
-      //   const errData = await response.json();
-      //   throw new Error(errData.detail || 'Login failed. Invalid credentials.');
-      // }
-      // const data = await response.json(); // Should contain access & refresh tokens
-      // const { access, refresh } = data;
+      const response = await fetch(`${API_BASE_URL}/auth/login/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
 
-      // --- Mock successful login with dummy tokens & user data ---
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate network delay
-      
-      // For mock, determine if identifier is email or username
-      const isEmail = identifier.includes('@');
-      const mockUsername = isEmail ? identifier.split('@')[0] : identifier;
+      const responseData = await response.json();
 
-      if (identifier === "testuser" && password === "password123" || identifier === "test@example.com" && password === "password123") {
-        const mockUser: User = { id: 1, username: mockUsername, email: isEmail ? identifier : `${mockUsername}@example.com` };
-        const mockAccessToken = 'mockAccessTokenString';
-        const mockRefreshToken = 'mockRefreshTokenString';
-
-        console.log('Login successful:', mockUser);
-        console.log('Access Token:', mockAccessToken);
-        console.log('Refresh Token:', mockRefreshToken);
-
-        // Store tokens (e.g., in localStorage or secure HttpOnly cookies handled by backend)
-        localStorage.setItem('accessToken', mockAccessToken);
-        localStorage.setItem('refreshToken', mockRefreshToken);
-
-        onLoginSuccess(mockUser, mockAccessToken, mockRefreshToken);
-        // Navigate to sorting hat if no house, or game if house assigned (logic in App.tsx)
-        // App.tsx will handle the navigation based on whether a house is already assigned.
-        // If a house is already assigned for this user (fetched after login),
-        // App.tsx's logic should navigate to /game. Otherwise, /sorting-hat.
-        // For now, we just signal success, App.tsx will check state.
-        // navigate('/sorting-hat'); // Or navigate('/game') based on fetched user profile
-      } else {
-        throw new Error('Invalid username or password.');
+      if (!response.ok) {
+        let errorMessage = 'Login failed. Invalid credentials or server error.';
+        if (responseData.detail) {
+          errorMessage = responseData.detail;
+        } else if (responseData.non_field_errors) {
+          errorMessage = responseData.non_field_errors.join(' ');
+        }
+        throw new Error(errorMessage);
       }
-      // --- End Mock ---
+
+      const { access, refresh } = responseData as LoginApiResponse;
+
+      if (!access || !refresh) {
+        throw new Error('Login successful, but token data is missing in the response.');
+      }
+
+      // Decode the access token to get user information
+      const decodedToken = jwtDecode<DecodedToken>(access);
+      
+      // Construct the User object from the decoded token
+      // Ensure your User type matches these fields
+      const user: User = {
+        id: decodedToken.user_id,
+        username: decodedToken.username,
+        email: decodedToken.email,
+        // Add other fields if they are in the token and your User type
+        // e.g., house: decodedToken.house
+      };
+
+      console.log('Login successful. Decoded User Info:', user);
+      console.log('Access Token:', access);
+      console.log('Refresh Token:', refresh);
+
+      localStorage.setItem('accessToken', access);
+      localStorage.setItem('refreshToken', refresh);
+
+      onLoginSuccess(user, access, refresh);
 
     } catch (err) {
-      setError((err as Error).message || 'An unknown error occurred.');
-      localStorage.removeItem('accessToken'); // Clear any stale tokens on failure
+      console.error("Login error:", err);
+      let message = 'An unknown error occurred during login.';
+      if (err instanceof Error) {
+        message = err.message;
+      }
+      setError(message);
+      localStorage.removeItem('accessToken');
       localStorage.removeItem('refreshToken');
     } finally {
       setIsLoading(false);
     }
-    // --- END MOCK API CALL ---
   };
 
   return (
