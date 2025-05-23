@@ -110,8 +110,15 @@ const SignupPage: React.FC<SignupPageProps> = ({ onSignupSuccess }) => {
         id: backendUser.id,
         username: backendUser.username,
         email: backendUser.email,
-        wizardName: wizardName, // Using the wizardName from the form input
-        // house: null, // A new user won't have a house yet
+        wizardName: wizardName,
+        house: null,
+        xp: 0,
+        level: 1,
+        wand: { wood: '', core: '', length: '' },
+        spells: [],
+        inventory: [],
+        gold: 0,
+        achievements: 0
       };
 
       console.log('Signup successful:', registeredUser);
