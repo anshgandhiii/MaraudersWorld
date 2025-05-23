@@ -195,4 +195,4 @@ class PlayerGPSTrace(models.Model):
         ordering = ['player', 'timestamp']
 
     def __str__(self):
-        return f"GPS Trace for {self.player.user.username} at {self.timestamp}"
+        return f"GPS Trace for {self.player.user.username} at {self.timestamp}" 
