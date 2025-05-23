@@ -68,3 +68,4 @@ media/
 *.pid
 *.seed
 *.rdb
+gameserver/db.sqlite3

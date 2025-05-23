@@ -1,10 +1,12 @@
-# gamemodels_app/serializers.py
 from rest_framework import serializers
-from django.contrib.auth.models import User # Needed if User fields are directly manipulated or read
+from django.contrib.auth.models import User
 from .models import (
-    PlayerProfile, Wand, PlayerQuestProgress, Quest, HOUSE_CHOICES,
-    WAND_CORE_CHOICES, WOOD_TYPE_CHOICES, QUEST_STATUS_CHOICES
+    PlayerProfile, Wand, PlayerQuestProgress, Quest, GameItem, PlayerInventory,
+    MagicalLocation, MapReport, PlayerGPSTrace,
+    HOUSE_CHOICES, WAND_CORE_CHOICES, WOOD_TYPE_CHOICES, QUEST_STATUS_CHOICES,
+    POI_TYPE_CHOICES, ITEM_TYPE_CHOICES, MAP_REPORT_TYPE_CHOICES, MAP_REPORT_STATUS_CHOICES
 )
+from django.utils import timezone
 
 class WandSerializer(serializers.ModelSerializer):
     core_display = serializers.CharField(source='get_core_display', read_only=True)
@@ -15,40 +17,68 @@ class WandSerializer(serializers.ModelSerializer):
         fields = ['id', 'core', 'wood_type', 'length_inches', 'flexibility',
                   'core_display', 'wood_type_display']
 
-
 class PlayerProfileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
     email = serializers.EmailField(source='user.email', read_only=True)
-    # If you added display_name to PlayerProfile model, include it here:
-    # display_name = serializers.CharField(required=False, allow_blank=True) # Make it updatable
     house_display = serializers.CharField(source='get_house_display', read_only=True)
 
     class Meta:
         model = PlayerProfile
         fields = [
-            'id', 'user', 'username', 'email', # Add display_name if it exists on model
-            'house', 'house_display', 'level', 'xp', 'avatar_url',
-            'current_latitude', 'current_longitude', 'last_seen',
+            'id', 'user', 'username', 'email', 'house', 'house_display', 'level', 'xp',
+            'avatar_url', 'current_latitude', 'current_longitude', 'last_seen'
         ]
-        # 'user' FK should be read-only after creation via signal.
-        # 'username' and 'email' are read from the related User model.
         read_only_fields = ['user', 'username', 'email', 'level', 'xp', 'last_seen']
-        # Allow 'display_name', 'house', 'avatar_url', 'current_latitude', 'current_longitude' to be updated.
 
     def update(self, instance, validated_data):
-        # User's username/email are not typically updated via profile endpoint.
-        # Password changes should go through a dedicated password change endpoint.
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
         return instance
 
+class GameItemSerializer(serializers.ModelSerializer):
+    item_type_display = serializers.CharField(source='get_item_type_display', read_only=True)
+
+    class Meta:
+        model = GameItem
+        fields = ['id', 'name', 'description', 'item_type', 'item_type_display', 'image_url', 'rarity']
+
+class PlayerInventorySerializer(serializers.ModelSerializer):
+    item = GameItemSerializer(read_only=True)
+
+    class Meta:
+        model = PlayerInventory
+        fields = ['id', 'item', 'quantity']
+
+class MagicalLocationSerializer(serializers.ModelSerializer):
+    poi_type_display = serializers.CharField(source='get_poi_type_display', read_only=True)
+    discovered_by_username = serializers.CharField(source='discovered_by.username', read_only=True, allow_null=True)
+
+    class Meta:
+        model = MagicalLocation
+        fields = [
+            'id', 'name', 'description', 'latitude', 'longitude', 'poi_type',
+            'poi_type_display', 'real_world_identifier', 'discovered_by',
+            'discovered_by_username', 'is_active', 'verification_score',
+            'created_at', 'updated_at'
+        ]
+
+class QuestSerializer(serializers.ModelSerializer):
+    item_reward = GameItemSerializer(read_only=True)
+    target_location = MagicalLocationSerializer(read_only=True)
+
+    class Meta:
+        model = Quest
+        fields = [
+            'id', 'title', 'description', 'xp_reward', 'item_reward',
+            'min_player_level', 'target_location', 'is_repeatable', 'is_active',
+            'created_at'
+        ]
 
 class QuestTitleSerializer(serializers.ModelSerializer):
     class Meta:
         model = Quest
         fields = ['id', 'title', 'description', 'xp_reward']
-
 
 class PlayerQuestProgressSerializer(serializers.ModelSerializer):
     quest = QuestTitleSerializer(read_only=True)
@@ -58,6 +88,27 @@ class PlayerQuestProgressSerializer(serializers.ModelSerializer):
         model = PlayerQuestProgress
         fields = ['id', 'quest', 'status', 'status_display', 'started_at', 'completed_at']
 
+class MapReportSerializer(serializers.ModelSerializer):
+    reporter_username = serializers.CharField(source='reporter.username', read_only=True)
+    related_poi = MagicalLocationSerializer(read_only=True)
+    report_type_display = serializers.CharField(source='get_report_type_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+
+    class Meta:
+        model = MapReport
+        fields = [
+            'id', 'reporter', 'reporter_username', 'latitude', 'longitude',
+            'report_type', 'report_type_display', 'description_text', 'photo',
+            'related_poi', 'timestamp', 'status', 'status_display',
+            'ai_confidence_score', 'admin_notes', 'resolved_at', 'resolver'
+        ]
+        read_only_fields = ['reporter', 'timestamp', 'status', 'ai_confidence_score', 'admin_notes', 'resolved_at', 'resolver']
+
+class PlayerGPSTraceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PlayerGPSTrace
+        fields = ['id', 'player', 'timestamp', 'latitude', 'longitude']
+        read_only_fields = ['player', 'timestamp']
 
 class DashboardSerializer(serializers.Serializer):
     profile = PlayerProfileSerializer(read_only=True)
@@ -66,9 +117,8 @@ class DashboardSerializer(serializers.Serializer):
     pending_quests_count = serializers.IntegerField(read_only=True)
     in_progress_quests_count = serializers.IntegerField(read_only=True)
 
-    def to_representation(self, instance_profile): # instance is PlayerProfile
+    def to_representation(self, instance_profile):
         user_wand = Wand.objects.filter(assigned_to=instance_profile).first()
-
         completed_quests_count = PlayerQuestProgress.objects.filter(
             player=instance_profile, status='COMPLETED'
         ).count()
