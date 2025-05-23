@@ -1,4 +1,3 @@
-// src/components/LoginPage.tsx
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { User } from '../types';
@@ -13,50 +12,66 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  const fetchUserProfile = async (accessToken: string) => {
+    const response = await fetch('https://maraudersworld.onrender.com/game/profile/', {
+      headers: { 'Authorization': `Bearer ${accessToken}` },
+    });
+    if (!response.ok) {
+      throw new Error('Failed to fetch user profile');
+    }
+    return await response.json();
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setIsLoading(true);
 
     try {
-      const response = await fetch('https://maraudersworld.onrender.com/auth/login/', {
+      // Step 1: Perform the login request
+      const loginResponse = await fetch('https://maraudersworld.onrender.com/auth/login/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
       });
 
-      const responseData = await response.json();
+      const loginData = await loginResponse.json();
 
-      if (!response.ok) {
-        throw new Error(responseData.detail || 'Login failed. Please check your credentials.');
+      if (!loginResponse.ok) {
+        throw new Error(loginData.detail || 'Login failed. Please check your credentials.');
       }
 
-      if (!responseData.user || !responseData.access || !responseData.refresh) {
-        throw new Error('Unexpected response structure from backend.');
+      if (!loginData.access || !loginData.refresh) {
+        throw new Error('Missing access or refresh token in response.');
       }
 
+      // Step 2: Fetch user profile with the access token
+      const userData = await fetchUserProfile(loginData.access);
+
+      // Step 3: Construct the User object
       const user: User = {
-        id: responseData.user.id,
-        username: responseData.user.username,
-        email: responseData.user.email,
-        wizardName: responseData.user.username, // Temporary, will be updated by fetchUserProfile
-        house: null,
-        xp: 0,
-        level: 1,
-        wand: { wood: '', core: '', length: '' },
-        spells: [], // Add spells
-        inventory: [], // Add inventory
-        gold: 0, // Add gold
-        achievements: 0,
-        questsCompleted: 0,
-        currencies: [],
-        active_accessories: [],
+        id: userData.id,
+        username: userData.username,
+        email: userData.email,
+        wizardName: userData.wizardName || userData.username,
+        house: userData.house || null,
+        xp: userData.xp || 0,
+        level: userData.level || 1,
+        wand: userData.wand || { wood: '', core: '', length: '' },
+        spells: userData.spells || [],
+        inventory: userData.inventory || [],
+        gold: userData.gold || 0,
+        achievements: userData.achievements || 0,
+        questsCompleted: userData.questsCompleted || 0,
+        currencies: userData.currencies || [],
+        active_accessories: userData.active_accessories || [],
       };
 
+      // Step 4: Call onLoginSuccess with the required data
       onLoginSuccess(
         { id: user.id, username: user.username, email: user.email },
-        responseData.access,
-        responseData.refresh
+        loginData.access,
+        loginData.refresh
       );
     } catch (err) {
       setError((err as Error).message || 'An unknown error occurred during login.');
