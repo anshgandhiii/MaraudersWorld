@@ -1,20 +1,19 @@
-// App.tsx
-
+// src/App.tsx
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import SignupPage from './components/SignupPage';
 import LoginPage from './components/LoginPage';
 import SortingHatQuizPage from './components/SortingHatQuizPage';
 import HouseRevealPage from './components/HouseRevealPage';
-import HomeDashboardPage from './pages/Dashboard'; // Ensure path is correct
-import InventoryPage from './pages/InventoryPage'; // Ensure path is correct
-import MapPage from './pages/MapPage'; // Ensure path is correct
-import { useState, useEffect, useCallback } from 'react'; // Added useCallback
-import type { User, HogwartsHouse } from './types'; // Ensure path is correct
+import HomeDashboardPage from './pages/Dashboard';
+import InventoryPage from './pages/InventoryPage';
+import MapPage from './pages/MapPage';
+import { useState, useEffect, useCallback } from 'react';
+import type { User, HogwartsHouse } from './types';
 import { jwtDecode } from 'jwt-decode';
 import ErrorBoundary from './components/ErrorBoundary';
-import QuestsPage from './pages/QuestPage'; // Ensure path is correct
-import SpellbookPage from './pages/SpellBookPage'; // Ensure path is correct
-import { Sparkles } from 'lucide-react'; // For loading indicator
+import QuestsPage from './pages/QuestPage';
+import SpellbookPage from './pages/SpellBookPage';
+import { Sparkles } from 'lucide-react';
 
 interface DecodedToken {
   user_id: number;
@@ -23,9 +22,8 @@ interface DecodedToken {
   exp: number;
   iat: number;
   jti: string;
-  // Include other fields from token if they exist and are useful, e.g. wizard_name
-  wizard_name?: string; // If token might have wizard_name
-  house?: string; // If token might have house
+  wizard_name?: string;
+  house?: string;
 }
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://maraudersworld.onrender.com';
@@ -44,18 +42,13 @@ const normalizeHouseName = (house: string | null | undefined): HogwartsHouse | n
 
 function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  // assignedHouse state might be redundant if currentUser.house is the source of truth after fetch
-  // However, it's used for routing logic before full profile is fetched.
-  const [assignedHouse, setAssignedHouse] = useState<HogwartsHouse | null>(null);
   const [isLoadingApp, setIsLoadingApp] = useState(true);
 
-  const handleLogout = useCallback(() => { // Wrapped in useCallback as it's stable
+  const handleLogout = useCallback(() => {
     console.log("[App.tsx handleLogout] Logging out.");
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     setCurrentUser(null);
-    setAssignedHouse(null);
-    // Optionally navigate to login: navigate('/login'); (if useNavigate is used here)
   }, []);
 
   const fetchUserProfile = useCallback(async (userIdFromToken: number, token: string): Promise<User | null> => {
@@ -85,8 +78,6 @@ function App() {
         id: profileData.id || userIdFromToken,
         username: profileData.username || "UnknownUsername",
         email: profileData.email || "UnknownEmail",
-        // Backend response has 'username' for wizard name if 'wizard_name' is not present directly.
-        // Your User type has 'wizardName'. We need to map 'username' from profileData to 'wizardName' if specific field missing.
         wizardName: profileData.wizard_name || profileData.username || "Wizard",
         house: normalizedHouseApi,
         xp: profileData.xp ?? 0,
@@ -97,9 +88,12 @@ function App() {
                   core: profileData.wand.core || '',
                   length: profileData.wand.length || '',
                 }
-              : { wood: '', core: '', length: '' }, // Default if not present or not an object
+              : { wood: '', core: '', length: '' },
+        spells: profileData.spells || [], // Add spells
+        inventory: profileData.inventory || [], // Add inventory
+        gold: profileData.gold ?? 0, // Add gold
         achievements: profileData.achievements ?? 0,
-        questsCompleted: profileData.quests_completed ?? 0, // Assuming backend sends snake_case
+        questsCompleted: profileData.quests_completed ?? 0,
         currencies: profileData.currencies || [],
         active_theme: profileData.active_theme,
         active_accessories: profileData.active_accessories || [],
@@ -108,17 +102,15 @@ function App() {
       };
 
       console.log("[App.tsx fetchUserProfile] User object to be set:", JSON.stringify(userObjectToSet, null, 2));
-
       setCurrentUser(userObjectToSet);
-      setAssignedHouse(userObjectToSet.house); // Update assignedHouse from the fetched full profile
       console.log("[App.tsx fetchUserProfile] setCurrentUser called with full profile.");
       return userObjectToSet;
     } catch (error) {
       console.error("[App.tsx fetchUserProfile] Catch block error:", error);
-      handleLogout(); // Logout on critical fetch error
+      handleLogout();
       return null;
     }
-  }, [handleLogout]); // Added handleLogout as dependency
+  }, [handleLogout]);
 
   useEffect(() => {
     const initializeAuth = async () => {
@@ -137,28 +129,26 @@ function App() {
             return;
           }
 
-          // Set a minimal currentUser from token first for quicker UI response if needed
-          // Then fetch full profile
           const minimalUserFromToken: User = {
             id: decodedToken.user_id,
             username: decodedToken.username,
             email: decodedToken.email,
-            wizardName: decodedToken.wizard_name || decodedToken.username || '', // Use from token if available
-            house: normalizeHouseName(decodedToken.house), // Use from token if available
-            xp: 0, // Default, will be updated
-            level: 1, // Default
-            wand: { wood: '', core: '', length: '' }, // Default
+            wizardName: decodedToken.wizard_name || decodedToken.username || '',
+            house: normalizeHouseName(decodedToken.house),
+            xp: 0,
+            level: 1,
+            wand: { wood: '', core: '', length: '' },
+            spells: [], // Add spells
+            inventory: [], // Add inventory
+            gold: 0, // Add gold
             achievements: 0,
             questsCompleted: 0,
             currencies: [],
             active_accessories: [],
           };
           setCurrentUser(minimalUserFromToken);
-          setAssignedHouse(minimalUserFromToken.house); // Set initial house from token
           console.log("[App.tsx initializeAuth] Minimal user set from token. Fetching full profile...");
-
           await fetchUserProfile(decodedToken.user_id, accessToken);
-          // setIsLoadingApp will be set to false after fetchUserProfile completes or if no token
         } catch (error) {
           console.error("[App.tsx initializeAuth] Error decoding token or during initial fetch:", error);
           handleLogout();
@@ -176,27 +166,31 @@ function App() {
     console.log("[App.tsx handleSignupSuccess] User signed up:", signedUpUser.username);
     localStorage.setItem('accessToken', accessToken);
     localStorage.setItem('refreshToken', refreshToken);
-    // The signedUpUser from backend might not have full details like a fetched profile.
-    // It's often better to fetch the full profile or ensure backend returns it.
-    // For now, we'll set it and rely on routing to sorting hat.
     setCurrentUser(signedUpUser);
-    setAssignedHouse(signedUpUser.house); // House from signup is likely null
-    setIsLoadingApp(false); // Ensure loading is false
+    setIsLoadingApp(false);
   };
 
   const handleLoginSuccess = async (loggedInUserBase: Pick<User, 'id' | 'username' | 'email'>, accessToken: string, refreshToken: string) => {
     console.log("[App.tsx handleLoginSuccess] User logged in:", loggedInUserBase.username);
     localStorage.setItem('accessToken', accessToken);
     localStorage.setItem('refreshToken', refreshToken);
-    // Set a very minimal user object, then fetch full profile
     const minimalUser: User = {
-        ...loggedInUserBase,
-        wizardName: loggedInUserBase.username, // Temporary
-        house: null, xp: 0, level: 1, wand: {wood: '', core: '', length: ''},
-        achievements: 0, questsCompleted: 0, currencies: [], active_accessories: [],
+      ...loggedInUserBase,
+      wizardName: loggedInUserBase.username,
+      house: null,
+      xp: 0,
+      level: 1,
+      wand: { wood: '', core: '', length: '' },
+      spells: [], // Add spells
+      inventory: [], // Add inventory
+      gold: 0, // Add gold
+      achievements: 0,
+      questsCompleted: 0,
+      currencies: [],
+      active_accessories: [],
     };
     setCurrentUser(minimalUser);
-    setIsLoadingApp(true); // Show loading while fetching full profile
+    setIsLoadingApp(true);
     console.log("[App.tsx handleLoginSuccess] Fetching full profile after login...");
     await fetchUserProfile(loggedInUserBase.id, accessToken);
     setIsLoadingApp(false);
@@ -204,15 +198,12 @@ function App() {
 
   const handleHouseAssigned = (house: HogwartsHouse) => {
     console.log("[App.tsx handleHouseAssigned] House assigned:", house);
-    setAssignedHouse(house);
     if (currentUser) {
       const updatedUser = { ...currentUser, house };
       setCurrentUser(updatedUser);
-      // Optionally, PATCH to backend to save the house if not already done by SortingHatQuizPage
       console.log("[App.tsx handleHouseAssigned] currentUser updated with new house.");
     }
   };
-
 
   if (isLoadingApp) {
     return (
@@ -239,7 +230,7 @@ function App() {
             </button>
           </nav>
         )}
-        <div className={currentUser ? "pt-16" : ""}> {/* Adjust padding if navbar height changes */}
+        <div className={currentUser ? "pt-16" : ""}>
           <Routes>
             <Route path="/login" element={
               currentUser ? <Navigate to={currentUser.house ? "/dashboard" : "/sorting-hat"} replace /> : <LoginPage onLoginSuccess={handleLoginSuccess} />
@@ -247,8 +238,6 @@ function App() {
             <Route path="/signup" element={
               currentUser ? <Navigate to="/sorting-hat" replace /> : <SignupPage onSignupSuccess={handleSignupSuccess} />
             } />
-            
-            {/* Protected Routes - Require currentUser */}
             <Route path="/sorting-hat" element={
               !currentUser ? <Navigate to="/login" replace /> :
               (currentUser.house ? <Navigate to="/house-reveal" replace /> : <SortingHatQuizPage user={currentUser} onHouseAssigned={handleHouseAssigned} />)
@@ -257,13 +246,10 @@ function App() {
               !currentUser ? <Navigate to="/login" replace /> :
               (!currentUser.house ? <Navigate to="/sorting-hat" replace /> : <HouseRevealPage house={currentUser.house} />)
             } />
-            
-            {/* Main App Routes - Require currentUser AND currentUser.house */}
             <Route path="/dashboard" element={
               !currentUser ? <Navigate to="/login" replace /> :
               (!currentUser.house ? <Navigate to="/sorting-hat" replace /> : (
                 <ErrorBoundary>
-                  {/* {console.log("[App.tsx Rendering Dashboard] Passing currentUser:", JSON.stringify(currentUser, null, 2))} */}
                   <HomeDashboardPage user={currentUser} />
                 </ErrorBoundary>
               ))
@@ -284,8 +270,6 @@ function App() {
               !currentUser ? <Navigate to="/login" replace /> :
               (!currentUser.house ? <Navigate to="/sorting-hat" replace /> : <SpellbookPage user={currentUser} />)
             } />
-            
-            {/* Fallback Route */}
             <Route path="*" element={
               <Navigate to={currentUser ? (currentUser.house ? "/dashboard" : "/sorting-hat") : "/login"} replace />
             }/>

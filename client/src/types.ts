@@ -11,6 +11,9 @@ export interface User {
     core: string;
     length: string;
   };
+  spells: string[];
+  gold: number;
+  inventory: any[];
   achievements: number;
   questsCompleted: number;
   currencies: { currency_type: 'GALLEON' | 'GEM' | 'XP'; amount: number }[];
