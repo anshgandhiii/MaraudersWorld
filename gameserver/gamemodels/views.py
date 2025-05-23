@@ -7,13 +7,40 @@ from django.utils import timezone
 from django.db.models import Q
 from .models import (
     PlayerProfile, Wand, PlayerQuestProgress, Quest, GameItem, PlayerInventory,
-    MagicalLocation, MapReport, PlayerGPSTrace
+    MagicalLocation, MapReport, PlayerGPSTrace, PlayerWand
 )
 from .serializers import (
     PlayerProfileSerializer, DashboardSerializer, PlayerQuestProgressSerializer,
     GameItemSerializer, PlayerInventorySerializer, MagicalLocationSerializer,
-    QuestSerializer, MapReportSerializer, PlayerGPSTraceSerializer
+    QuestSerializer, MapReportSerializer, PlayerGPSTraceSerializer, PlayerWandSerializer
 )
+
+
+class PlayerWandListCreateView(generics.ListCreateAPIView):
+    serializer_class = PlayerWandSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        player_profile, _ = PlayerProfile.objects.get_or_create(user=self.request.user)
+        return PlayerWand.objects.filter(player=player_profile).select_related('wand')
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        player_profile, _ = PlayerProfile.objects.get_or_create(user=self.request.user)
+        context['player'] = player_profile
+        return context
+
+    def perform_create(self, serializer):
+        player_profile, _ = PlayerProfile.objects.get_or_create(user=self.request.user)
+        serializer.save(player=player_profile)
+
+class PlayerWandDetailView(generics.RetrieveDestroyAPIView):
+    serializer_class = PlayerWandSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        player_profile, _ = PlayerProfile.objects.get_or_create(user=self.request.user)
+        return PlayerWand.objects.filter(player=player_profile)
 
 class UserDashboardView(drf_views.APIView):
     permission_classes = [IsAuthenticated]
