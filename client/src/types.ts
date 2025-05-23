@@ -1,11 +1,9 @@
-export type HogwartsHouse = 'Gryffindor' | 'Hufflepuff' | 'Ravenclaw' | 'Slytherin';
-
 export interface User {
   id: number;
   username: string;
   email: string;
   wizardName: string;
-  house: HogwartsHouse | null;
+  house: 'Gryffindor' | 'Hufflepuff' | 'Ravenclaw' | 'Slytherin' | null;
   xp: number;
   level: number;
   wand: {
@@ -36,8 +34,8 @@ export interface User {
     cost_galleons: number;
     cost_gems: number;
   }[];
-  current_latitude?: number;
-  current_longitude?: number;
+  current_latitude?: number; // Added
+  current_longitude?: number; // Added
 }
 
 export interface InventoryItem {
@@ -85,5 +83,7 @@ export interface QuestProgress {
   started_at?: string;
   completed_at?: string;
 }
+
+export type HogwartsHouse = 'Gryffindor' | 'Hufflepuff' | 'Ravenclaw' | 'Slytherin';
 
 export type QuestStatus = 'PENDING' | 'ACCEPTED' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
