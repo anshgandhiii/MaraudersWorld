@@ -7,6 +7,7 @@ import {
   Compass,
   Trophy,
   Sparkles,
+  Package,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -99,7 +100,7 @@ const houseStyles: Record<string, { bg: string; text: string; border: string; ac
   },
 };
 
-const NavigationCard: React.FC<NavigationCardProps> = ({
+export const NavigationCard: React.FC<NavigationCardProps> = ({
   to,
   icon: Icon,
   title,
@@ -360,10 +361,10 @@ const HomeDashboardPage: React.FC<HomeDashboardPageProps> = ({ user }) => {
             delay="800ms"
           />
           <NavigationCard
-            to="/map"
-            icon={Map}
-            title="Explore the Map"
-            description="Discover hidden locations and secret passages throughout Hogwarts"
+            to="/inventory"
+            icon={Package}
+            title="View Inventory"
+            description="Inspect your collection of magical items and treasures"
             delay="900ms"
           />
         </div>

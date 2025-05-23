@@ -4,6 +4,7 @@ import LoginPage from './components/LoginPage';
 import SortingHatQuizPage from './components/SortingHatQuizPage';
 import HouseRevealPage from './components/HouseRevealPage';
 import HomeDashboardPage from './pages/Dashboard';
+import InventoryPage from './pages/InventoryPage';
 import { useState, useEffect } from 'react';
 import type { User, HogwartsHouse } from './types';
 import { jwtDecode } from 'jwt-decode';
@@ -163,6 +164,10 @@ function App() {
             <Route path="/dashboard" element={
               !currentUser ? <Navigate to="/login" /> :
               (!assignedHouse ? <Navigate to="/sorting-hat" /> : <HomeDashboardPage user={currentUser} />)
+            } />
+            <Route path="/inventory" element={
+              !currentUser ? <Navigate to="/login" /> :
+              (!assignedHouse ? <Navigate to="/sorting-hat" /> : <InventoryPage user={currentUser} />)
             } />
             <Route path="*" element={
               <Navigate to={currentUser ? (assignedHouse ? "/dashboard" : "/sorting-hat") : "/login"} />

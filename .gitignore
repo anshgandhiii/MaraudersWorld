@@ -1,1 +1,71 @@
+# Django specific
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+.Python
+*.sqlite3
+*.log
+*.pot
+*.DS_Store
+migrations/
+*.env
+.env
+.env.*
+!.env.example
+media/
+staticfiles/
+
+# Virtual environment
+venv/
+ENV/
+env/
+.venv/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Python package and build files
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Testing and coverage
+.coverage
+coverage.xml
+*.cover
+*.py,cover
+.htmlcov/
+.tox/
+.nox/
+.pytest_cache/
+.coverage.*
+
+# Local development
+local_settings.py
+*.bak
+*.swp
+*~
+
+# Database dumps
+*.sql
+*.sql.gz
+
+# Static and media files (if not needed in repo)
+static/
+media/
+
+# Other
+*.prof
+*.pid
+*.seed
+*.rdb
 gameserver/db.sqlite3
