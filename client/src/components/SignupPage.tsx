@@ -1,21 +1,20 @@
-// src/pages/SignupPage.tsx
+// src/components/SignupPage.tsx
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import type { User } from '../types'; // Assuming User interface is in types.ts or similar
+import { Link } from 'react-router-dom';
+import type { User } from '../types'; // Assuming User interface is in src/types.ts
 
 interface SignupPageProps {
-  onSignupSuccess: (user: User) => void;
+  onSignupSuccess: (user: User, accessToken: string, refreshToken: string) => void;
 }
 
 const SignupPage: React.FC<SignupPageProps> = ({ onSignupSuccess }) => {
   const [username, setUsername] = useState('');
-  const [wizardName, setWizardName] = useState('');
+  const [wizardName, setWizardName] = useState(''); // This will be part of the frontend User object
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,42 +32,52 @@ const SignupPage: React.FC<SignupPageProps> = ({ onSignupSuccess }) => {
     setIsLoading(true);
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/auth/register/', { // Updated API endpoint
+      // The backend RegisterSerializer doesn't explicitly handle 'wizard_name'.
+      // We send it, but it might be ignored by the User creation part.
+      // It's good practice to only send what the serializer expects for the User model,
+      // unless you have custom logic to handle extra fields.
+      // For this example, we'll keep sending it in case there's a signal or custom logic.
+      // If not, wizard_name will primarily be used for the frontend User object initially.
+      const requestBody = {
+        username,
+        email,
+        password,
+        password2: confirmPassword,
+        // If your backend's User creation process or a signal can pick up 'wizard_name':
+        wizard_name: wizardName,
+      };
+
+      // Remove wizard_name from requestBody if backend strictly adheres to RegisterSerializer fields for User
+      // and wizard_name is handled in a separate profile creation/update step.
+      // For now, let's assume it might be used by a signal or custom save logic.
+      // if (!backend_handles_wizard_name_in_registration) {
+      //    delete requestBody.wizard_name;
+      // }
+
+
+      const response = await fetch('http://127.0.0.1:8000/auth/register/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          // If your Django backend requires a CSRF token for this endpoint,
-          // you'll need to fetch and include it. For many DRF JWT setups,
-          // CSRF might be disabled for API endpoints or handled differently.
-          // 'X-CSRFToken': getCookie('csrftoken'), // Example if using cookies for CSRF
+          // 'X-CSRFToken': getCookie('csrftoken'), // Uncomment if CSRF is needed
         },
-        body: JSON.stringify({
-          username,
-          email,
-          password,
-          wizard_name: wizardName, // Send as snake_case if your Django serializer expects that
-          // If your Django backend expects password confirmation, send it too:
-          // password2: confirmPassword,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const responseData = await response.json();
 
       if (!response.ok) {
-        // Handle errors from the backend
-        // DRF often returns errors as an object: e.g., { username: ["already exists"], email: ["invalid"] }
-        let errorMessage = 'Signup failed. Please try again.';
+        let errorMessage = 'Signup failed. Please check your details and try again.';
         if (responseData) {
-          if (responseData.detail) {
+          if (responseData.detail) { // General error
             errorMessage = responseData.detail;
-          } else {
-            // Concatenate multiple field errors if they exist
+          } else { // Field-specific errors
             const fieldErrors = Object.entries(responseData)
               .map(([field, errors]) => {
-                if (Array.isArray(errors)) {
-                  return `${field}: ${errors.join(', ')}`;
-                }
-                return `${field}: ${errors}`;
+                const errorMessages = Array.isArray(errors) ? errors.join(', ') : String(errors);
+                // Capitalize field names for display
+                const formattedField = field.charAt(0).toUpperCase() + field.slice(1).replace('_', ' ');
+                return `${formattedField}: ${errorMessages}`;
               })
               .join(' | ');
             if (fieldErrors) errorMessage = fieldErrors;
@@ -77,61 +86,57 @@ const SignupPage: React.FC<SignupPageProps> = ({ onSignupSuccess }) => {
         throw new Error(errorMessage);
       }
 
-      // Assuming successful signup returns the user object (or part of it)
-      // Adjust according to your actual backend response structure
-      // For example, DRF might return the created user directly, or nested.
-      // Let's assume it returns something like: { id: 1, username: "newuser", email: "new@example.com", ... }
-      // or { "user": { id: 1, ... }, "message": "User created" }
+      // Backend response structure:
+      // {
+      //   "user": { "id": ..., "username": "...", "email": "..." },
+      //   "refresh": "...",
+      //   "access": "...",
+      //   "message": "..."
+      // }
 
-      let createdUser: User;
-      if (responseData.user && responseData.user.id) { // Example if nested under 'user'
-         createdUser = {
-            id: responseData.user.id,
-            username: responseData.user.username,
-            email: responseData.user.email,
-            // wizardName: responseData.user.wizard_name // if returned and part of User type
-         };
-      } else if (responseData.id) { // Example if returned directly
-         createdUser = {
-            id: responseData.id,
-            username: responseData.username,
-            email: responseData.email,
-            // wizardName: responseData.wizard_name // if returned and part of User type
-         };
-      } else {
-        // Fallback if response structure is unknown but signup was "ok"
-        // This is not ideal, backend should return consistent user data
-        console.warn("Signup successful, but user data structure from backend is unexpected.", responseData);
-        createdUser = { id: Date.now(), username, email }; // Use form data as a fallback
+      if (!responseData.user || !responseData.access || !responseData.refresh) {
+        console.error("Unexpected response structure from backend after signup:", responseData);
+        throw new Error("Signup succeeded, but token or user data was not received correctly.");
       }
 
+      const backendUser = responseData.user;
+      const accessToken = responseData.access;
+      const refreshToken = responseData.refresh;
 
-      console.log('Signup successful:', createdUser, 'Wizard Name used:', wizardName);
-      onSignupSuccess(createdUser); // Update global state
-      navigate('/sorting-hat'); // Or navigate to login page, or dashboard if auto-login
+      // Construct the frontend User object
+      // wizardName from the form is used here as the backend UserSerializer doesn't return it.
+      // If wizard_name were part of backendUser, we'd use backendUser.wizard_name
+      const registeredUser: User = {
+        id: backendUser.id,
+        username: backendUser.username,
+        email: backendUser.email,
+        wizardName: wizardName, // Using the wizardName from the form input
+        // house: null, // A new user won't have a house yet
+      };
+
+      console.log('Signup successful:', registeredUser);
+      console.log('Access Token Received');
+      console.log('Refresh Token Received');
+      console.log('Backend Message:', responseData.message);
+
+
+      localStorage.setItem('accessToken', accessToken);
+      localStorage.setItem('refreshToken', refreshToken);
+
+      onSignupSuccess(registeredUser, accessToken, refreshToken);
 
     } catch (err) {
       setError((err as Error).message || 'An unknown error occurred during signup.');
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Helper function to get CSRF cookie if needed (place outside component or in a utils file)
-  // function getCookie(name: string) {
-  //   let cookieValue = null;
-  //   if (document.cookie && document.cookie !== '') {
-  //     const cookies = document.cookie.split(';');
-  //     for (let i = 0; i < cookies.length; i++) {
-  //       const cookie = cookies[i].trim();
-  //       if (cookie.substring(0, name.length + 1) === (name + '=')) {
-  //         cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-  //         break;
-  //       }
-  //     }
-  //   }
-  //   return cookieValue;
-  // }
+  // Helper function to get CSRF cookie if needed
+  // function getCookie(name: string): string | null { ... }
+
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-gray-800 via-gray-900 to-black p-6">
@@ -152,13 +157,14 @@ const SignupPage: React.FC<SignupPageProps> = ({ onSignupSuccess }) => {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
+              autoComplete="username"
               className="mt-1 block w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm text-gray-200 placeholder-gray-500"
               placeholder="e.g., MagicalUser123"
             />
           </div>
           <div>
             <label htmlFor="wizardName" className="block text-sm font-medium text-yellow-300/80">
-              Your Wizard Name
+              Your Wizard Name (Profile)
             </label>
             <input
               type="text"
@@ -167,7 +173,7 @@ const SignupPage: React.FC<SignupPageProps> = ({ onSignupSuccess }) => {
               onChange={(e) => setWizardName(e.target.value)}
               required
               className="mt-1 block w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm text-gray-200 placeholder-gray-500"
-              placeholder="e.g., Albus D. (or your character's name)"
+              placeholder="e.g., Albus Dumbledore Jr."
             />
           </div>
           <div>
@@ -180,6 +186,7 @@ const SignupPage: React.FC<SignupPageProps> = ({ onSignupSuccess }) => {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              autoComplete="email"
               className="mt-1 block w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm text-gray-200 placeholder-gray-500"
               placeholder="you@example.com"
             />
@@ -194,6 +201,7 @@ const SignupPage: React.FC<SignupPageProps> = ({ onSignupSuccess }) => {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              autoComplete="new-password"
               className="mt-1 block w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm text-gray-200"
             />
           </div>
@@ -207,6 +215,7 @@ const SignupPage: React.FC<SignupPageProps> = ({ onSignupSuccess }) => {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
+              autoComplete="new-password"
               className="mt-1 block w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm text-gray-200"
             />
           </div>
@@ -220,6 +229,12 @@ const SignupPage: React.FC<SignupPageProps> = ({ onSignupSuccess }) => {
             </button>
           </div>
         </form>
+        <p className="mt-8 text-center text-sm text-gray-400">
+          Already have an account?{' '}
+          <Link to="/login" className="font-medium text-yellow-400 hover:text-yellow-300">
+            Login Here
+          </Link>
+        </p>
       </div>
     </div>
   );

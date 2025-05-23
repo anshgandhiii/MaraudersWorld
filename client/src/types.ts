@@ -3,6 +3,7 @@ export interface User {
   id: number;
   username: string;
   email: string;
+  wizardName: string;
 }
 
 export type HogwartsHouse = 'Gryffindor' | 'Hufflepuff' | 'Ravenclaw' | 'Slytherin';
