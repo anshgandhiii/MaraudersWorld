@@ -1,4 +1,3 @@
-// src/pages/SortingHatQuizPage.tsx
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { User, HogwartsHouse } from '../types';
@@ -42,6 +41,21 @@ const quizQuestions: QuizQuestion[] = [
   },
 ];
 
+// Define types to match backend PlayerProfileSerializer
+interface PlayerProfile {
+  id: number;
+  username: string;
+  email: string;
+  house: HogwartsHouse | null;
+  house_display: string | null;
+  level: number;
+  xp: number;
+  avatar_url: string | null;
+  current_latitude: number | null;
+  current_longitude: number | null;
+  last_seen: string;
+}
+
 interface SortingHatQuizPageProps {
   user: User;
   onHouseAssigned: (house: HogwartsHouse) => void;
@@ -77,16 +91,13 @@ const SortingHatQuizPage: React.FC<SortingHatQuizPageProps> = ({ user, onHouseAs
         throw new Error("Authentication token not found. Please log in again.");
       }
 
-      // API call to update the user's profile with the house
-      // Your backend should have an endpoint like PATCH /api/profiles/{user_id}/ or /api/profiles/me/
-      // that accepts a 'house' field.
-      const response = await fetch(`${API_BASE_URL}/game/profile/`, { // Or your specific endpoint
-        method: 'PATCH', // Or PUT if you're replacing the whole profile
+      const response = await fetch(`${API_BASE_URL}/game/profile/`, {
+        method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${accessToken}`,
         },
-        body: JSON.stringify({ house: houseToAssign }),
+        body: JSON.stringify({ house: houseToAssign.toUpperCase() }), // Backend expects uppercase enum values
       });
 
       if (!response.ok) {
@@ -94,14 +105,13 @@ const SortingHatQuizPage: React.FC<SortingHatQuizPageProps> = ({ user, onHouseAs
         throw new Error(errorData.detail || `Failed to assign house. Server responded with ${response.status}`);
       }
 
-      const updatedProfileData = await response.json(); // Contains the updated profile
-      console.log(`User ${user.username} sorted into ${houseToAssign}. Profile updated:`, updatedProfileData);
+      const updatedProfile: PlayerProfile = await response.json();
+      console.log(`User ${user.username} sorted into ${houseToAssign}. Profile updated:`, updatedProfile);
       
-      onHouseAssigned(houseToAssign); // Update the global state in App.tsx
-      navigate('/house-reveal'); // Navigate to reveal page
-
+      onHouseAssigned(houseToAssign);
+      navigate('/house-reveal');
     } catch (err) {
-      let message = 'Failed to save house. Please try again.';
+      let message = 'Failed to save house assignment. Please try again.';
       if (err instanceof Error) {
         message = err.message;
       }
@@ -124,15 +134,13 @@ const SortingHatQuizPage: React.FC<SortingHatQuizPageProps> = ({ user, onHouseAs
         maxScore = score;
         tiedHouses.length = 0;
         tiedHouses.push(house);
-      } else if (score === maxScore) {
+      } else if (score === maxScore && score > 0) {
         tiedHouses.push(house);
       }
     }
     
     if (tiedHouses.length > 0) {
-        sortedHouse = tiedHouses[Math.floor(Math.random() * tiedHouses.length)];
-    } else {
-        sortedHouse = houses[Math.floor(Math.random() * houses.length)];
+      sortedHouse = tiedHouses[Math.floor(Math.random() * tiedHouses.length)];
     }
     assignHouseToProfile(sortedHouse);
   };
@@ -174,11 +182,11 @@ const SortingHatQuizPage: React.FC<SortingHatQuizPageProps> = ({ user, onHouseAs
         )}
 
         {currentQuestionIndex >= quizQuestions.length && !isLoading && (
-            <p className="text-yellow-300 text-xl text-center my-8">The Sorting Hat is deliberating...</p>
+          <p className="text-yellow-300 text-xl text-center my-8">The Sorting Hat is deliberating...</p>
         )}
 
         {isLoading && (
-            <p className="text-yellow-300 text-xl text-center my-8 animate-pulse">Sorting...</p>
+          <p className="text-yellow-300 text-xl text-center my-8 animate-pulse">Sorting...</p>
         )}
 
         <div className="mt-10 text-center">

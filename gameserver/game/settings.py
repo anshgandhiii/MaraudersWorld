@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'auth_app',
     'rest_framework',
+    'gamemodels',
 ]
 
 # REST Framework settings

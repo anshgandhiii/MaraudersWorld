@@ -9,7 +9,53 @@ import {
   Sparkles,
   Package,
 } from "lucide-react";
-import type { User } from "../types";
+import { useNavigate } from "react-router-dom";
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+
+// Define types based on DashboardSerializer and PlayerProfileSerializer
+interface Wand {
+  id: number;
+  core: string;
+  wood_type: string;
+  length_inches: number;
+  flexibility: string;
+  core_display: string;
+  wood_type_display: string;
+}
+
+interface PlayerProfile {
+  id: number;
+  username: string;
+  email: string;
+  house: string | null; // Matches backend HOUSE_CHOICES (uppercase)
+  house_display: string | null;
+  level: number;
+  xp: number;
+  avatar_url: string | null;
+  current_latitude: number | null;
+  current_longitude: number | null;
+  last_seen: string;
+}
+
+interface DashboardData {
+  profile: PlayerProfile;
+  wand: Wand | null;
+  completed_quests_count: number;
+  pending_quests_count: number;
+  in_progress_quests_count: number;
+}
+
+interface User {
+  username: string;
+  house: string | null; // Will be normalized to title case
+  wizardName: string;
+  level: number;
+  xp: number;
+  wand: { wood: string; core: string; length: string };
+  achievements: number;
+  questsCompleted: number;
+}
 
 interface NavigationCardProps {
   to: string;
@@ -23,7 +69,7 @@ interface HomeDashboardPageProps {
   user: User;
 }
 
-export const houseStyles = {
+const houseStyles: Record<string, { bg: string; text: string; border: string; accent: string; glow: string }> = {
   Gryffindor: {
     bg: "from-red-900 via-red-800 to-red-900",
     text: "text-yellow-200",
@@ -64,6 +110,7 @@ export const NavigationCard: React.FC<NavigationCardProps> = ({
   <div
     className={`group relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-100 via-yellow-50 to-amber-100 p-6 shadow-xl border-2 border-amber-300 hover:shadow-2xl hover:shadow-amber-500/25 transform hover:-translate-y-2 transition-all duration-500 ease-out cursor-pointer animate-in`}
     style={{ animationDelay: delay }}
+    onClick={() => window.location.href = to}
   >
     <div className="absolute inset-0 bg-gradient-to-r from-amber-400/10 to-yellow-400/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
     <div className="relative z-10">
@@ -96,24 +143,74 @@ export const NavigationCard: React.FC<NavigationCardProps> = ({
 
 const HomeDashboardPage: React.FC<HomeDashboardPageProps> = ({ user }) => {
   const [mounted, setMounted] = useState(false);
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
-    setMounted(true);
+    const fetchDashboardData = async () => {
+      try {
+        const accessToken = localStorage.getItem('accessToken');
+        if (!accessToken) {
+          throw new Error("Authentication token not found. Please log in again.");
+        }
+
+        const response = await fetch(`${API_BASE_URL}/game/dashboard/`, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch dashboard data: ${response.status}`);
+        }
+
+        const data: DashboardData = await response.json();
+        setDashboardData(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
+        console.error("Error fetching dashboard:", err);
+      } finally {
+        setMounted(true);
+      }
+    };
+
+    fetchDashboardData();
   }, []);
 
-  if (!user.house) {
+  // Normalize house to title case
+  const normalizedHouse = dashboardData?.profile.house
+    ? dashboardData.profile.house.charAt(0).toUpperCase() + dashboardData.profile.house.slice(1).toLowerCase()
+    : null;
+
+  if (!mounted || !dashboardData) {
     return (
       <div className="min-h-screen flex items-center justify-center text-xl text-amber-200">
-        No house assigned. Please complete the Sorting Hat quiz.
+        Loading dashboard...
       </div>
     );
   }
 
-  const currentHouseStyle = houseStyles[user.house];
-  const xpProgress = (user.xp % 1000) / 10;
-  const nextLevelXP = 1000 - (user.xp % 1000);
+  if (!normalizedHouse || !houseStyles[normalizedHouse]) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-xl text-amber-200">
+        No house assigned. Please complete the Sorting Hat quiz.
+        <button
+          className="ml-4 px-4 py-2 bg-amber-500 text-white rounded hover:bg-amber-600"
+          onClick={() => navigate('/sorting-hat')}
+        >
+          Take Quiz
+        </button>
+      </div>
+    );
+  }
 
-  const houseDescriptions: Record<NonNullable<User["house"]>, string> = {
+  const currentHouseStyle = houseStyles[normalizedHouse];
+  const xpProgress = (dashboardData.profile.xp % 1000) / 10;
+  const nextLevelXP = 1000 - (dashboardData.profile.xp % 1000);
+
+  const houseDescriptions: Record<string, string> = {
     Gryffindor:
       "Where dwell the brave at heart, their daring, nerve, and chivalry set Gryffindors apart.",
     Slytherin:
@@ -152,7 +249,7 @@ const HomeDashboardPage: React.FC<HomeDashboardPageProps> = ({ user }) => {
         >
           <div className="relative">
             <h1 className="text-6xl sm:text-7xl lg:text-8xl font-bold bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-300 bg-clip-text text-transparent drop-shadow-2xl mb-4 leading-tight">
-              Welcome, {user.wizardName}
+              Welcome, {dashboardData.profile.username}
             </h1>
             <div className="absolute -top-4 -right-4 animate-spin-slow">
               <Sparkles className="text-amber-400" size={32} />
@@ -162,6 +259,10 @@ const HomeDashboardPage: React.FC<HomeDashboardPageProps> = ({ user }) => {
             The Wizard Who Thrives
           </p>
         </header>
+
+        {error && (
+          <p className="bg-red-500/30 text-red-300 p-3 rounded mb-4 text-sm text-center">{error}</p>
+        )}
 
         <div
           className={`relative rounded-3xl p-8 shadow-2xl mb-12 border-2 ${currentHouseStyle.border} bg-gradient-to-r ${currentHouseStyle.bg} ${currentHouseStyle.glow} transition-all duration-500 hover:shadow-3xl transform hover:-translate-y-1 animate-in`}
@@ -173,7 +274,7 @@ const HomeDashboardPage: React.FC<HomeDashboardPageProps> = ({ user }) => {
               <h2
                 className={`text-4xl md:text-5xl font-bold ${currentHouseStyle.text} drop-shadow-lg`}
               >
-                House: {user.house}
+                House: {normalizedHouse}
               </h2>
               <Trophy
                 className={`${currentHouseStyle.accent} animate-pulse`}
@@ -183,7 +284,7 @@ const HomeDashboardPage: React.FC<HomeDashboardPageProps> = ({ user }) => {
             <p
               className={`text-lg md:text-xl italic leading-relaxed ${currentHouseStyle.text} opacity-90`}
             >
-              {houseDescriptions[user.house]}
+              {houseDescriptions[normalizedHouse]}
             </p>
           </div>
         </div>
@@ -200,7 +301,9 @@ const HomeDashboardPage: React.FC<HomeDashboardPageProps> = ({ user }) => {
               </h3>
             </div>
             <p className={`${currentHouseStyle.text} text-sm`}>
-              {user.wand.wood}, {user.wand.core}, {user.wand.length}
+              {dashboardData.wand
+                ? `${dashboardData.wand.wood_type_display}, ${dashboardData.wand.core_display}, ${dashboardData.wand.length_inches}"`
+                : "No wand assigned"}
             </p>
           </div>
           <div
@@ -214,7 +317,7 @@ const HomeDashboardPage: React.FC<HomeDashboardPageProps> = ({ user }) => {
               </h3>
             </div>
             <p className={`${currentHouseStyle.text} text-sm`}>
-              Level {user.level} ({user.xp} XP)
+              Level {dashboardData.profile.level} ({dashboardData.profile.xp} XP)
             </p>
             <div className="mt-2 bg-gray-700/50 rounded-full h-2 overflow-hidden">
               <div
@@ -237,10 +340,7 @@ const HomeDashboardPage: React.FC<HomeDashboardPageProps> = ({ user }) => {
               </h3>
             </div>
             <p className={`${currentHouseStyle.text} text-sm`}>
-              {user.achievements} Achievements Unlocked
-            </p>
-            <p className={`${currentHouseStyle.text} text-sm`}>
-              {user.questsCompleted} Quests Completed
+              {dashboardData.completed_quests_count} Quests Completed
             </p>
           </div>
         </div>
