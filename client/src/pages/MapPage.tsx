@@ -68,7 +68,7 @@ type MapViewType = 'normal' | 'satellite' | 'terrain';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://maraudersworld.onrender.com';
 const HERE_API_KEY = 'fni7yJt1UNpagDbFd68KWE_0mOGAqlvsBWlQG6Kfyxg';
-const MARKER_UPLOAD_URL = 'https://10.10.115.249:3000/uploadMarker';
+const MARKER_UPLOAD_URL = 'https://10.10.51.160:3000/uploadMarker';
 
 const IS_FRONTEND_SECURE_CONTEXT = window.location.protocol === 'https:' ||
                                  window.location.hostname === 'localhost' ||

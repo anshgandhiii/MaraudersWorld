@@ -1,0 +1,137 @@
+{
+  "markers": [
+    {
+      "title": "crime",
+      "lat": 19.1236,
+      "lon": 72.8348,
+      "description": "South-West of base point",
+      "color": "blue"
+    },
+    {
+      "title": "crime",
+      "description": "Armed robbery in progress. A person is pointing a gun at another person.",
+      "color": "red",
+      "lat": 19.126129,
+      "lon": 72.838505
+    },
+    {
+      "title": "crime",
+      "description": "Armed robbery in progress. A man with a gun is threatening another man.",
+      "color": "red",
+      "lat": 19.124,
+      "lon": 72.8352
+    },
+    {
+      "title": "construction",
+      "description": "Road Closed. Construction work ahead.",
+      "color": "orange",
+      "lat": 19.12316,
+      "lon": 72.8366
+    },
+    {
+      "title": "direction",
+      "description": "Way to SPJIMR Mess",
+      "color": "#007bff",
+      "lat": 19.12314,
+      "lon": 72.83736
+    },
+    {
+      "title": "SPTBI",
+      "description": "Sardar Patel Technology Business Incubator. Supported by Department of Science & Technology, Government of India.",
+      "color": "#0000FF",
+      "lat": 19.12441,
+      "lon": 72.83741
+    },
+    {
+      "title": "SPTBI",
+      "description": "Sardar Patel Technology Business Incubator. Supported by Department of Science & Technology, Government of India.",
+      "color": "#0000FF",
+      "lat": 19.12441,
+      "lon": 72.83741
+    },
+    {
+      "title": "Lay's Chips",
+      "description": "Lay's potato chips packet on a desk with laptops.",
+      "color": "orange",
+      "lat": 19.12315,
+      "lon": 72.83584
+    },
+    {
+      "title": "SPTBI",
+      "description": "Sardar Patel Technology Business Incubator. Supported by Department of Science & Technology, Government of India.",
+      "color": "#0000FF",
+      "lat": 19.12441,
+      "lon": 72.83741
+    },
+    {
+      "title": "coding",
+      "description": "Two people are coding on their laptops. One person is also on a video call.",
+      "color": "#2980b9",
+      "lat": 19.12315,
+      "lon": 72.83584
+    },
+    {
+      "title": "SPTBI",
+      "description": "Sardar Patel Technology Business Incubator. Supported by Department of Science & Technology, Government of India.",
+      "color": "#0000FF",
+      "lat": 19.12441,
+      "lon": 72.83741
+    },
+    {
+      "title": "vehicle",
+      "description": "red Porsche",
+      "color": "red",
+      "lat": 19.12311,
+      "lon": 72.83582
+    },
+    {
+      "title": "building",
+      "description": "Sardar Patel Technology Business Incubator (SPTBI) building at night.",
+      "color": "#808080",
+      "lat": 19.12441,
+      "lon": 72.83741
+    },
+    {
+      "title": "people",
+      "description": "Two young men are sitting in what appears to be a computer lab or classroom.",
+      "color": "#008000",
+      "lat": 19.13054,
+      "lon": 72.86188
+    },
+    {
+      "title": "Coding",
+      "description": "Laptop displaying code on the screen.",
+      "color": "#2980b9",
+      "lat": 19.12311,
+      "lon": 72.83582
+    },
+    {
+      "title": "map",
+      "description": "Explore the Map, Discover magical locations around Hogwarts",
+      "color": "#a62222",
+      "lat": 19.12315,
+      "lon": 72.83584
+    },
+    {
+      "title": "laptop use",
+      "description": "Person using a laptop",
+      "color": "#0000FF",
+      "lat": 19.12312,
+      "lon": 72.83583
+    },
+    {
+      "title": "Room Number",
+      "description": "Room number 507",
+      "color": "#FFFF00",
+      "lat": 19.12322,
+      "lon": 72.83632
+    },
+    {
+      "title": "classroom",
+      "description": "An image of a classroom with desks and students.",
+      "color": "#808080",
+      "lat": 19.12312,
+      "lon": 72.83635
+    }
+  ]
+}

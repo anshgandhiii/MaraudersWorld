@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="origin">
+  <title>Marauder's Map</title>
+  <!-- HERE Maps JS API -->
+  <script src="https://js.api.here.com/v3/3.1/mapsjs-core.js"></script>
+  <script src="https://js.api.here.com/v3/3.1/mapsjs-service.js"></script>
+  <script src="https://js.api.here.com/v3/3.1/mapsjs-mapevents.js"></script>
+  <script src="https://js.api.here.com/v3/3.1/mapsjs-ui.js"></script>
+  <!-- HERE Maps CSS -->
+  <link rel="stylesheet" href="https://js.api.here.com/v3/3.1/mapsjs-ui.css">
+  <!-- Tailwind CSS CDN -->
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <!-- Google Fonts for a magical, parchment-like typography -->
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Crimson+Text:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    body {
+      background: linear-gradient(to bottom, #1a1a2e, #16213e);
+      font-family: 'Crimson Text', serif;
+      color: #e2e8f0;
+    }
+    #map {
+      height: 100%;
+      width: 100%;
+      border: 4px solid #4a2c0b;
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+      background: url('https://www.transparenttextures.com/patterns/parchment.png');
+    }
+    .header {
+      background: linear-gradient(to right, #2d1b0a, #4a2c0b);
+      border-bottom: 2px solid #d4a017;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+    .header h1 {
+      font-family: 'Cinzel', serif;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+    }
+    .logo {
+      border: 2px solid #d4a017;
+      border-radius: 50%;
+      padding: 4px;
+      background: #fff;
+    }
+    .control-panel {
+      background: rgba(42, 25, 10, 0.95);
+      border: 2px solid #d4a017;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+    .control-panel button {
+      transition: all 0.3s ease;
+    }
+    .control-panel button:hover {
+      background-color: #d4a017;
+      color: #2d1b0a;
+    }
+  </style>
+</head>
+<body class="flex flex-col h-screen overflow-hidden">
+  <!-- Header -->
+  <header class="header p-4 flex items-center justify-between">
+    <div class="flex items-center space-x-4">
+      <img src="./logo.jpg" alt="Marauder's Map Logo" class="logo h-12 w-12">
+      <h1 class="text-3xl font-bold text-amber-200">Marauder's Map Dashboard</h1>
+    </div>
+    <div class="control-panel p-3 flex space-x-2">
+      <button class="bg-amber-900 text-amber-100 px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-700">
+        Show Footprints
+      </button>
+      <button class="bg-amber-900 text-amber-100 px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-700">
+        Toggle Theme
+      </button>
+    </div>
+  </header>
+  <!-- Map Section -->
+  <main class="flex-grow p-4">
+    <div id="map" class="relative"></div>
+  </main>
+  <script src="main.js"></script>
+</body>
+</html>
