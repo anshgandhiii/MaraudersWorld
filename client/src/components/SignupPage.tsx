@@ -1,7 +1,7 @@
 // src/components/SignupPage.tsx
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { User } from '../types'; // Assuming User interface is in src/types.ts
+import type { User } from '../types';
 
 interface SignupPageProps {
   onSignupSuccess: (user: User, accessToken: string, refreshToken: string) => void;
@@ -9,7 +9,7 @@ interface SignupPageProps {
 
 const SignupPage: React.FC<SignupPageProps> = ({ onSignupSuccess }) => {
   const [username, setUsername] = useState('');
-  const [wizardName, setWizardName] = useState(''); // This will be part of the frontend User object
+  const [wizardName, setWizardName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -32,34 +32,18 @@ const SignupPage: React.FC<SignupPageProps> = ({ onSignupSuccess }) => {
     setIsLoading(true);
 
     try {
-      // The backend RegisterSerializer doesn't explicitly handle 'wizard_name'.
-      // We send it, but it might be ignored by the User creation part.
-      // It's good practice to only send what the serializer expects for the User model,
-      // unless you have custom logic to handle extra fields.
-      // For this example, we'll keep sending it in case there's a signal or custom logic.
-      // If not, wizard_name will primarily be used for the frontend User object initially.
       const requestBody = {
         username,
         email,
         password,
         password2: confirmPassword,
-        // If your backend's User creation process or a signal can pick up 'wizard_name':
         wizard_name: wizardName,
       };
-
-      // Remove wizard_name from requestBody if backend strictly adheres to RegisterSerializer fields for User
-      // and wizard_name is handled in a separate profile creation/update step.
-      // For now, let's assume it might be used by a signal or custom save logic.
-      // if (!backend_handles_wizard_name_in_registration) {
-      //    delete requestBody.wizard_name;
-      // }
-
 
       const response = await fetch('https://maraudersworld.onrender.com/auth/register/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          // 'X-CSRFToken': getCookie('csrftoken'), // Uncomment if CSRF is needed
         },
         body: JSON.stringify(requestBody),
       });
@@ -69,13 +53,12 @@ const SignupPage: React.FC<SignupPageProps> = ({ onSignupSuccess }) => {
       if (!response.ok) {
         let errorMessage = 'Signup failed. Please check your details and try again.';
         if (responseData) {
-          if (responseData.detail) { // General error
+          if (responseData.detail) {
             errorMessage = responseData.detail;
-          } else { // Field-specific errors
+          } else {
             const fieldErrors = Object.entries(responseData)
               .map(([field, errors]) => {
                 const errorMessages = Array.isArray(errors) ? errors.join(', ') : String(errors);
-                // Capitalize field names for display
                 const formattedField = field.charAt(0).toUpperCase() + field.slice(1).replace('_', ' ');
                 return `${formattedField}: ${errorMessages}`;
               })
@@ -86,14 +69,6 @@ const SignupPage: React.FC<SignupPageProps> = ({ onSignupSuccess }) => {
         throw new Error(errorMessage);
       }
 
-      // Backend response structure:
-      // {
-      //   "user": { "id": ..., "username": "...", "email": "..." },
-      //   "refresh": "...",
-      //   "access": "...",
-      //   "message": "..."
-      // }
-
       if (!responseData.user || !responseData.access || !responseData.refresh) {
         console.error("Unexpected response structure from backend after signup:", responseData);
         throw new Error("Signup succeeded, but token or user data was not received correctly.");
@@ -103,15 +78,22 @@ const SignupPage: React.FC<SignupPageProps> = ({ onSignupSuccess }) => {
       const accessToken = responseData.access;
       const refreshToken = responseData.refresh;
 
-      // Construct the frontend User object
-      // wizardName from the form is used here as the backend UserSerializer doesn't return it.
-      // If wizard_name were part of backendUser, we'd use backendUser.wizard_name
       const registeredUser: User = {
         id: backendUser.id,
         username: backendUser.username,
         email: backendUser.email,
-        wizardName: wizardName, // Using the wizardName from the form input
-        // house: null, // A new user won't have a house yet
+        wizardName: wizardName,
+        house: null,
+        xp: 0,
+        level: 1,
+        wand: { wood: '', core: '', length: '' },
+        spells: [],
+        inventory: [],
+        gold: 0,
+        achievements: 0,
+        questsCompleted: 0, // Add questsCompleted
+        currencies: [], // Add currencies
+        active_accessories: [], // Add active_accessories
       };
 
       console.log('Signup successful:', registeredUser);
@@ -119,12 +101,10 @@ const SignupPage: React.FC<SignupPageProps> = ({ onSignupSuccess }) => {
       console.log('Refresh Token Received');
       console.log('Backend Message:', responseData.message);
 
-
       localStorage.setItem('accessToken', accessToken);
       localStorage.setItem('refreshToken', refreshToken);
 
       onSignupSuccess(registeredUser, accessToken, refreshToken);
-
     } catch (err) {
       setError((err as Error).message || 'An unknown error occurred during signup.');
       localStorage.removeItem('accessToken');
@@ -133,10 +113,6 @@ const SignupPage: React.FC<SignupPageProps> = ({ onSignupSuccess }) => {
       setIsLoading(false);
     }
   };
-
-  // Helper function to get CSRF cookie if needed
-  // function getCookie(name: string): string | null { ... }
-
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-gray-800 via-gray-900 to-black p-6">

@@ -1,3 +1,4 @@
+// src/pages/Dashboard.tsx
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import {
@@ -12,9 +13,8 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import type { User, HogwartsHouse } from "../types";
+import type { HogwartsHouse, User } from "../types";
 
-// NavigationCardProps interface
 interface NavigationCardProps {
   to: string;
   icon: React.ComponentType<{ size?: number }>;
@@ -23,7 +23,6 @@ interface NavigationCardProps {
   delay: string;
 }
 
-// House styles
 export const houseStyles = {
   Gryffindor: { bg: "from-red-900 via-red-800 to-red-900", text: "text-yellow-200", border: "border-yellow-400", accent: "text-yellow-400", glow: "shadow-red-500/30" },
   Slytherin: { bg: "from-green-900 via-green-800 to-emerald-900", text: "text-slate-200", border: "border-emerald-400", accent: "text-emerald-300", glow: "shadow-green-500/30" },
@@ -32,13 +31,11 @@ export const houseStyles = {
   Default: { bg: "from-gray-900 via-gray-800 to-gray-900", text: "text-amber-200", border: "border-amber-400", accent: "text-amber-400", glow: "shadow-amber-500/30" },
 };
 
-// Type guard for valid HogwartsHouse
 const isValidHouse = (house: string | undefined): house is HogwartsHouse =>
   !!house &&
   (Object.keys(houseStyles) as Array<keyof typeof houseStyles>).includes(house as keyof typeof houseStyles) &&
   house !== 'Default';
 
-// NavigationCard component
 export const NavigationCard: React.FC<NavigationCardProps> = ({
   to,
   icon: Icon,
@@ -81,7 +78,6 @@ export const NavigationCard: React.FC<NavigationCardProps> = ({
   </Link>
 );
 
-// Types for API data
 type Wand = {
   id: number;
   core: string;
@@ -115,7 +111,7 @@ type DashboardData = {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://maraudersworld.onrender.com";
 
-const HomeDashboardPage: React.FC = () => {
+const HomeDashboardPage: React.FC<{ user: User }> = ({ user }) => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [wands, setWands] = useState<Wand[]>([]);
   const [completedQuests, setCompletedQuests] = useState<number>(0);
@@ -133,7 +129,6 @@ const HomeDashboardPage: React.FC = () => {
         const token = localStorage.getItem("accessToken");
         if (!token) throw new Error("No access token found");
 
-        // Fetch profile and quest stats
         const dashboardRes = await axios.get<DashboardData>(
           `${API_BASE_URL}/game/dashboard/`,
           { headers: { Authorization: `Bearer ${token}` } }
@@ -143,7 +138,6 @@ const HomeDashboardPage: React.FC = () => {
         setPendingQuests(dashboardRes.data.pending_quests_count);
         setInProgressQuests(dashboardRes.data.in_progress_quests_count);
 
-        // Fetch all wands of the user
         const wandsRes = await axios.get<any[]>(
           `${API_BASE_URL}/game/wands/me/`,
           { headers: { Authorization: `Bearer ${token}` } }
@@ -193,11 +187,12 @@ const HomeDashboardPage: React.FC = () => {
   const xpProgress = typeof profile.xp === "number" ? (profile.xp % 1000) / 10 : 0;
   const nextLevelXP = typeof profile.xp === "number" ? 1000 - (profile.xp % 1000) : 1000;
 
-  const houseDescriptions: Record<HogwartsHouse, string> = {
+  const houseDescriptions: Record<HogwartsHouse | 'Default', string> = {
     Gryffindor: "Where dwell the brave at heart, their daring, nerve, and chivalry set Gryffindors apart.",
     Slytherin: "Or perhaps in Slytherin, you'll make your real friends, those cunning folk use any means to achieve their ends.",
     Ravenclaw: "Or yet in wise old Ravenclaw, if you've a ready mind, where those of wit and learning will always find their kind.",
     Hufflepuff: "You might belong in Hufflepuff, where they are just and loyal, those patient Hufflepuffs are true and unafraid of toil.",
+    Default: "Awaiting your house assignment.",
   };
 
   const wandDetails = wands.length > 0
@@ -237,15 +232,13 @@ const HomeDashboardPage: React.FC = () => {
         <header className={`text-center mb-16 ${mounted ? "animate-in fade-in slide-in-from-top-8" : "opacity-0"}`}>
           <div className="relative">
             <h1 className="text-6xl sm:text-7xl lg:text-8xl font-bold bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-300 bg-clip-text text-transparent drop-shadow-2xl mb-4 leading-tight">
-              Welcome, {profile.username || "Wizard"}
+              Welcome, {user.wizardName || profile.username || "Wizard"}
             </h1>
             <div className="absolute -top-4 -right-4 animate-spin-slow">
               <Sparkles className="text-amber-400" size={32} />
             </div>
           </div>
-          <p className="text-2xl text-amber-200 italic font-light tracking-wide">
-            The Wizard Who Thrives
-          </p>
+          <p className="text-2xl text-amber-200 italic font-light tracking-wide">The Wizard Who Thrives</p>
         </header>
 
         <div
@@ -261,7 +254,7 @@ const HomeDashboardPage: React.FC = () => {
               <Trophy className={`${currentHouseStyle.accent} animate-pulse`} size={32} />
             </div>
             <p className={`text-lg md:text-xl italic leading-relaxed ${currentHouseStyle.text} opacity-90`}>
-              {houseDescriptions[house] || "Awaiting your house assignment."}
+              {houseDescriptions[house]}
             </p>
           </div>
         </div>
