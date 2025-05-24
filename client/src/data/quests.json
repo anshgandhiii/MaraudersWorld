@@ -1,0 +1,80 @@
+[
+  {
+    "id": 1,
+    "name": "Marauder's Map Trail",
+    "description": "Find these magical locations near SPIT College.",
+    "locations": [
+      {
+        "name": "SPIT Main Gate",
+        "lat": 19.12345,
+        "lng": 72.83628,
+        "task": "Take a photo at the SPIT Main Gate."
+      },
+      {
+        "name": "SPIT Library",
+        "lat": 19.12401,
+        "lng": 72.83510,
+        "task": "Take a photo inside the Library."
+      },
+      {
+        "name": "Canteen",
+        "lat": 19.12370,
+        "lng": 72.83690,
+        "task": "Take a photo at the Canteen."
+      }
+    ],
+    "reward_points": 100
+  },
+  {
+    "id": 2,
+    "name": "Hogwarts Express",
+    "description": "Discover iconic spots inspired by the Hogwarts journey.",
+    "locations": [
+      {
+        "name": "SPIT Auditorium",
+        "lat": 19.12385,
+        "lng": 72.83660,
+        "task": "Take a photo at the Auditorium entrance."
+      },
+      {
+        "name": "Football Ground",
+        "lat": 19.12440,
+        "lng": 72.83675,
+        "task": "Take a photo on the Football Ground."
+      },
+      {
+        "name": "Parking Lot",
+        "lat": 19.12395,
+        "lng": 72.83610,
+        "task": "Take a photo at the Parking Lot."
+      }
+    ],
+    "reward_points": 100
+  },
+  {
+    "id": 3,
+    "name": "Wizard's Gathering",
+    "description": "Meet at these secret wizarding spots.",
+    "locations": [
+      {
+        "name": "SPIT Rooftop",
+        "lat": 19.12410,
+        "lng": 72.83650,
+        "task": "Take a photo on the Rooftop."
+      },
+      {
+        "name": "Lab Block",
+        "lat": 19.12400,
+        "lng": 72.83590,
+        "task": "Take a photo in the Lab Block."
+      },
+      {
+        "name": "Garden Area",
+        "lat": 19.12430,
+        "lng": 72.83630,
+        "task": "Take a photo in the Garden."
+      }
+    ],
+    "reward_points": 100
+  }
+]

@@ -13,6 +13,6 @@ export default defineConfig({
   server: {
     host: true, // This makes Vite listen on all available network interfaces (0.0.0.0)
                  // so you can access it from other devices on your LAN via your IP
-    https: true, 
-  }
+    https: true,
+}
 })

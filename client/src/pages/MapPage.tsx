@@ -1,7 +1,23 @@
 import React, { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
-import type { User, HogwartsHouse } from '../types'; // Assuming these types are defined
-import { Map as MapIcon, Satellite, Mountain, Route, Camera as CameraIcon, UploadCloud, RefreshCw, XCircle, AlertTriangle, FileJson, CheckCircle } from 'lucide-react';
+import type { User, HogwartsHouse } from '../types';
+import {
+  Map as MapIcon,
+  Satellite,
+  Mountain,
+  Route,
+  Camera as CameraIcon,
+  UploadCloud,
+  RefreshCw,
+  XCircle,
+  AlertTriangle,
+  FileJson,
+  CheckCircle
+} from 'lucide-react';
+
+// POI data
+import malls from '../data/malls.json';
+import hospitals from '../data/hospitals.json';
 
 export const houseStyles = {
   Gryffindor: {
@@ -52,11 +68,7 @@ type MapViewType = 'normal' | 'satellite' | 'terrain';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://maraudersworld.onrender.com';
 const HERE_API_KEY = 'fni7yJt1UNpagDbFd68KWE_0mOGAqlvsBWlQG6Kfyxg';
-
-// --- CORRECTED AND FINALIZED MARKER_UPLOAD_URL ---
-// Ensure this URL is exactly what your backend server is listening on for HTTPS.
-const MARKER_UPLOAD_URL = 'https://10.10.114.250:3000/uploadMarker';
-// Double-check for any typos or hidden characters in the line above.
+const MARKER_UPLOAD_URL = 'https://10.10.51.160:3000/uploadMarker';
 
 const IS_FRONTEND_SECURE_CONTEXT = window.location.protocol === 'https:' ||
                                  window.location.hostname === 'localhost' ||
@@ -70,12 +82,16 @@ const MapPage: React.FC<MapPageProps> = ({ user }) => {
   const [currentMapView, setCurrentMapView] = useState<MapViewType>('normal');
 
   const mapRef = useRef<HTMLDivElement>(null);
-  const platformRef = useRef<H.service.Platform | null>(null);
+  const platformInstanceRef = useRef<H.service.Platform | null>(null);
   const mapInstanceRef = useRef<H.Map | null>(null);
-  const markerRef = useRef<H.map.Marker | null>(null);
-  const defaultLayersRef = useRef<H.service.DefaultLayers | null>(null);
-  const uiRef = useRef<H.ui.UI | null>(null);
-  const isMapActiveRef = useRef<boolean>(false);
+  const uiInstanceRef = useRef<H.ui.UI | null>(null);
+  const defaultLayersInstanceRef = useRef<H.service.DefaultLayers | null>(null);
+  
+  const userMarkerRef = useRef<H.map.Marker | null>(null);
+  const poiGroupRef = useRef<H.map.Group | null>(null);
+  const mapTapListenerRef = useRef<((evt: H.mapevents.Event) => void) | null>(null);
+
+  const [isMapInitialized, setIsMapInitialized] = useState<boolean>(false);
 
   const [isCameraVisible, setIsCameraVisible] = useState<boolean>(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
@@ -111,7 +127,7 @@ const MapPage: React.FC<MapPageProps> = ({ user }) => {
       setLocationError(msg);
     }
   };
-
+  
   const getLocation = () => {
     if (!navigator.geolocation) {
       setLocationError('Geolocation is not supported by your browser.');
@@ -128,7 +144,7 @@ const MapPage: React.FC<MapPageProps> = ({ user }) => {
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const { latitude: lat, longitude: lon, accuracy } = position.coords;
-        setLocationError(null); 
+        setLocationError(null);
         setLatitude(lat); setLongitude(lon); setLocationAccuracy(accuracy);
         updateUserLocationAPI(lat, lon);
       },
@@ -151,79 +167,187 @@ const MapPage: React.FC<MapPageProps> = ({ user }) => {
 
   useEffect(() => { getLocation(); }, []);
 
-  useEffect(() => { 
-    if (!HERE_API_KEY || !HERE_API_KEY.startsWith('fni7yJt1UNpagDbFd68KWE')) { 
-      setLocationError((prev) => (prev ? prev + "\n" : "") + 'Configuration error: HERE API key seems incorrect or missing.'); 
+  // Map initialization
+  useEffect(() => {
+    if (!mapRef.current || !HERE_API_KEY) {
+      if (!HERE_API_KEY) setLocationError("HERE API Key is missing. Map cannot be initialized.");
       return;
     }
-    if (!mapRef.current || mapInstanceRef.current) return;
+    if (mapInstanceRef.current) return;
+    
+    console.log("MapPage: Starting map initialization...");
+    setIsMapInitialized(false);
 
     const platform = new H.service.Platform({ apikey: HERE_API_KEY });
-    platformRef.current = platform;
-    const layers = platform.createDefaultLayers();
-    defaultLayersRef.current = layers;
+    platformInstanceRef.current = platform;
+
+    const defaultLayers = platform.createDefaultLayers();
+    defaultLayersInstanceRef.current = defaultLayers;
+
     const initialCenterLat = latitude ?? user.current_latitude ?? 51.5074;
     const initialCenterLng = longitude ?? user.current_longitude ?? -0.1278;
-    const map = new H.Map(
-      mapRef.current, layers.vector.normal.map,
-      {
-        zoom: (latitude && longitude) ? 15 : 13,
-        center: { lat: initialCenterLat, lng: initialCenterLng },
-        pixelRatio: window.devicePixelRatio || 1,
-      }
-    );
-    mapInstanceRef.current = map;
-    new H.mapevents.Behavior(new H.mapevents.MapEvents(map));
-    const ui = H.ui.UI.createDefault(map, layers);
-    uiRef.current = ui;
-    isMapActiveRef.current = true;
-    const resizeTimer = setTimeout(() => {
-      if (isMapActiveRef.current && mapInstanceRef.current?.getViewPort()?.resize) {
-        mapInstanceRef.current.getViewPort().resize();
-      }
-    }, 200);
-    return () => {
-      clearTimeout(resizeTimer);
-      isMapActiveRef.current = false;
-      uiRef.current?.dispose(); uiRef.current = null;
-      mapInstanceRef.current?.dispose(); mapInstanceRef.current = null;
-    };
-  }, [HERE_API_KEY, user.current_latitude, user.current_longitude]); 
+    const initialZoom = (latitude && longitude) || (user.current_latitude && user.current_longitude) ? 15 : 13;
 
-  useEffect(() => { 
+    try {
+      const map = new H.Map(
+        mapRef.current,
+        defaultLayers.vector.normal.map,
+        {
+          zoom: initialZoom,
+          center: { lat: initialCenterLat, lng: initialCenterLng },
+          pixelRatio: window.devicePixelRatio || 1,
+        }
+      );
+      mapInstanceRef.current = map;
+      new H.mapevents.Behavior(new H.mapevents.MapEvents(map));
+      const ui = H.ui.UI.createDefault(map, defaultLayers);
+      uiInstanceRef.current = ui;
+      poiGroupRef.current = new H.map.Group();
+      map.addObject(poiGroupRef.current);
+      setIsMapInitialized(true);
+      console.log("MapPage: HERE Map initialized successfully.");
+
+      const resizeTimer = setTimeout(() => {
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.getViewPort().resize();
+          console.log("MapPage: Initial map resize executed.");
+        }
+      }, 300);
+
+      return () => {
+        console.log("MapPage: Cleaning up map instance (useEffect cleanup).");
+        clearTimeout(resizeTimer);
+        if (mapTapListenerRef.current && mapInstanceRef.current) {
+            mapInstanceRef.current.removeEventListener('tap', mapTapListenerRef.current);
+            mapTapListenerRef.current = null;
+        }
+        if (uiInstanceRef.current) {
+          uiInstanceRef.current.dispose();
+          uiInstanceRef.current = null;
+        }
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.dispose();
+          mapInstanceRef.current = null;
+        }
+        platformInstanceRef.current = null;
+        defaultLayersInstanceRef.current = null;
+        poiGroupRef.current = null;
+        userMarkerRef.current = null;
+        setIsMapInitialized(false);
+      };
+    } catch (mapError) {
+      console.error("MapPage: Critical error during HERE Map initialization:", mapError);
+      setLocationError(`Map failed to initialize: ${mapError instanceof Error ? mapError.message : String(mapError)}. Check console for details.`);
+      setIsMapInitialized(false);
+    }
+  }, [HERE_API_KEY]);
+
+  // Map viewport resize listener
+  useEffect(() => {
     const handleResize = () => {
-      if (isMapActiveRef.current && mapInstanceRef.current?.getViewPort()?.resize) {
+      if (mapInstanceRef.current && isMapInitialized) {
         mapInstanceRef.current.getViewPort().resize();
       }
     };
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+    return () => { 
+        window.removeEventListener('resize', handleResize); 
+    };
+  }, [isMapInitialized]);
 
-  useEffect(() => { 
-    if (!isMapActiveRef.current || !mapInstanceRef.current || !defaultLayersRef.current) return;
-    const map = mapInstanceRef.current;
-    const layers = defaultLayersRef.current;
-    if (latitude !== null && longitude !== null) {
-      map.setCenter({ lat: latitude, lng: longitude });
-      if (markerRef.current) {
-        markerRef.current.setGeometry({ lat: latitude, lng: longitude });
-      } else {
-        markerRef.current = new H.map.Marker({ lat: latitude, lng: longitude });
-        map.addObject(markerRef.current);
-      }
-    } else if (markerRef.current) {
-      map.removeObject(markerRef.current);
-      markerRef.current = null;
+  // Update markers, layers, and map center
+  useEffect(() => {
+    if (!isMapInitialized || !mapInstanceRef.current || !defaultLayersInstanceRef.current || !uiInstanceRef.current || !poiGroupRef.current) {
+      return;
     }
+    const map = mapInstanceRef.current;
+    const layers = defaultLayersInstanceRef.current;
+    const ui = uiInstanceRef.current;
+    const currentPoiGroup = poiGroupRef.current;
+
+    currentPoiGroup.removeAll();
+
+    malls.forEach((mall: any) => {
+      const svg = `<svg width="36" height="36" xmlns="http://www.w3.org/2000/svg">
+        <rect x="5" y="10" width="26" height="18" rx="5" fill="#fbbf24" stroke="#b45309" strokeWidth="2"/>
+        <path d="M10 18q2-8 8-8t8 8" stroke="#b45309" strokeWidth="2" fill="none"/>
+        <circle cx="18" cy="26" r="2" fill="#b45309"/>
+      </svg>`;
+      try {
+        const icon = new H.map.Icon(svg, { anchor: { x: 18, y: 30 } });
+        const marker = new H.map.Marker({ lat: mall.lat, lng: mall.lng }, { icon });
+        marker.setData(`<div class="text-yellow-900 font-semibold">Mall:<br/>${mall.name}</div>`);
+        currentPoiGroup.addObject(marker);
+      } catch (iconError) {
+        console.error("Error creating mall icon/marker:", iconError, mall.name);
+      }
+    });
+
+    hospitals.forEach((hospital: any) => {
+      const svg = `<svg width="36" height="36" xmlns="http://www.w3.org/2000/svg">
+        <rect x="6" y="10" width="24" height="18" rx="4" fill="#34d399" stroke="#065f46" strokeWidth="2"/>
+        <rect x="16" y="14" width="4" height="10" fill="#065f46"/>
+        <rect x="12" y="18" width="12" height="4" fill="#065f46"/>
+      </svg>`;
+       try {
+        const icon = new H.map.Icon(svg, { anchor: { x: 18, y: 30 } });
+        const marker = new H.map.Marker({ lat: hospital.lat, lng: hospital.lng }, { icon });
+        marker.setData(`<div class="text-green-900 font-semibold">Hospital:<br/>${hospital.name}</div>`);
+        currentPoiGroup.addObject(marker);
+      } catch (iconError) {
+        console.error("Error creating hospital icon/marker:", iconError, hospital.name);
+      }
+    });
+
+    if (latitude !== null && longitude !== null) {
+      const userPos = { lat: latitude, lng: longitude };
+      if (userMarkerRef.current) {
+        userMarkerRef.current.setGeometry(userPos);
+      } else {
+        const svg = `<svg width="38" height="38" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="19" cy="19" r="13" fill="#2563eb" stroke="#fff" strokeWidth="5"/>
+          <circle cx="19" cy="19" r="6" fill="#60a5fa" stroke="#2563eb" strokeWidth="2"/>
+        </svg>`;
+        try {
+            const icon = new H.map.Icon(svg, { anchor: { x: 19, y: 19 } });
+            userMarkerRef.current = new H.map.Marker(userPos, { icon });
+            userMarkerRef.current.setData(`<div class="text-blue-900 font-semibold">You (${user.wizardName})</div>`);
+            map.addObject(userMarkerRef.current);
+        } catch (iconError) {
+            console.error("Error creating user marker icon:", iconError);
+        }
+      }
+      map.setCenter(userPos, true);
+    } else if (userMarkerRef.current) {
+      map.removeObject(userMarkerRef.current);
+      userMarkerRef.current = null;
+    }
+
+    if (!mapTapListenerRef.current) {
+        const tapListener = (evt: H.mapevents.Event) => {
+            const target = evt.target;
+            if (target instanceof H.map.Marker && target.getData()) {
+                ui.getBubbles().forEach(bubble => ui.removeBubble(bubble));
+                const bubble = new H.ui.InfoBubble(target.getGeometry() as H.geo.Point, {
+                content: target.getData()
+                });
+                ui.addBubble(bubble);
+            }
+        };
+        map.addEventListener('tap', tapListener);
+        mapTapListenerRef.current = tapListener;
+    }
+
     let newLayer: H.map.layer.Layer | undefined;
     switch (currentMapView) {
       case 'satellite': newLayer = layers.raster.satellite.map; break;
       case 'terrain': newLayer = layers.raster.terrain.map; break;
       default: newLayer = layers.vector.normal.map; break;
     }
-    if (newLayer && map.getBaseLayer() !== newLayer) map.setBaseLayer(newLayer);
-  }, [latitude, longitude, currentMapView]);
+    if (newLayer && map.getBaseLayer() !== newLayer) {
+        map.setBaseLayer(newLayer);
+    }
+  }, [isMapInitialized, latitude, longitude, currentMapView, user.wizardName]);
 
   const openCamera = async () => {
     setCapturedImage(null); setUploadMarkerError(null); setUploadMarkerSuccess(null);
@@ -243,6 +367,7 @@ const MapPage: React.FC<MapPageProps> = ({ user }) => {
       stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
     } catch (err: any) {
       if (["NotFoundError", "OverconstrainedError", "NotReadableError", "TypeError"].includes(err.name)) {
+        console.warn("Environment camera failed, trying default camera:", err);
         try {
           stream = await navigator.mediaDevices.getUserMedia({ video: true }); 
         } catch (fallbackErr: any) {
@@ -269,7 +394,8 @@ const MapPage: React.FC<MapPageProps> = ({ user }) => {
     if (isCameraVisible && cameraStream && videoRef.current) {
         videoRef.current.srcObject = cameraStream;
         videoRef.current.play().catch(e => {
-            setUploadMarkerError(`Error playing video stream: ${e.message}. Autoplay might be blocked.`);
+            console.error("Error playing video stream:", e);
+            setUploadMarkerError(`Error playing video stream: ${e.message}. Autoplay might be blocked or camera busy.`);
             closeCamera();
         });
     }
@@ -323,16 +449,14 @@ const MapPage: React.FC<MapPageProps> = ({ user }) => {
     const payloadForDisplay = {
         lat: payload.lat,
         lon: payload.lon,
-        image : payload.image.substring(0, 150) + (payload.image.length > 150 ? "..." : ""),
+        image : payload.image.substring(0, 100) + (payload.image.length > 100 ? "..." : ""),
         image_length_chars: payload.image.length,
     };
     setDebugPayload(JSON.stringify(payloadForDisplay, null, 2));
 
-    // Log the URL that will be used by Axios
     console.log('[handleSubmitMarker] Axios will attempt to POST to this URL:', MARKER_UPLOAD_URL);
     console.log("Payload (preview):", payloadForDisplay);
 
-    // Pre-flight check of the URL string before Axios uses it
     if (!MARKER_UPLOAD_URL || typeof MARKER_UPLOAD_URL !== 'string' || !(MARKER_UPLOAD_URL.startsWith('http://') || MARKER_UPLOAD_URL.startsWith('https://'))) {
         const errorMsg = `Configuration Error: MARKER_UPLOAD_URL is malformed or missing. Current value: "${MARKER_UPLOAD_URL}"`;
         console.error(errorMsg);
@@ -344,10 +468,10 @@ const MapPage: React.FC<MapPageProps> = ({ user }) => {
     try {
       const response = await axios.post(MARKER_UPLOAD_URL, payload, { 
         headers: { 'Content-Type': 'application/json' },
-        timeout: 60000, 
+        timeout: 60000,
       });
       console.log('Upload successful:', response.data);
-      setUploadMarkerSuccess(`Landmark uploaded! Server: ${JSON.stringify(response.data)}`);
+      setUploadMarkerSuccess(`Landmark uploaded! Server response: ${JSON.stringify(response.data)}`);
       setCapturedImage(null);
     } catch (error: any) {
       console.error('Full error object during landmark upload:', error); 
@@ -359,12 +483,8 @@ const MapPage: React.FC<MapPageProps> = ({ user }) => {
       } else if (error.response) {
         msg += `Server error ${error.response.status}. Response: ${JSON.stringify(error.response.data) || error.message}`;
       } else if (error.request) {
-        msg = `No response received from server at ${MARKER_UPLOAD_URL}. Possible causes:
-        1. Backend server is down or not reachable at this exact URL.
-        2. CORS misconfiguration on the backend (check backend logs & browser Network tab for OPTIONS request failures).
-        3. Network issue (firewall, DNS, proxy).
-        4. Incorrect backend URL (protocol HTTP/HTTPS, domain, port, path).
-        Ensure backend is running, accessible, and CORS allows requests from ${window.location.origin}.`;
+        // This is where net::ERR_CERT_AUTHORITY_INVALID will often manifest if not handled by browser trust
+        msg = `No response received from server at ${MARKER_UPLOAD_URL}. Possible causes:\n1. Backend server is down or not reachable.\n2. CORS misconfiguration on the backend.\n3. Network issue (firewall, DNS, proxy).\n4. SSL Certificate Untrusted: If using HTTPS with an IP and self-signed certificate, ensure your browser has been told to trust it (by visiting the URL directly and bypassing the security warning page). \nEnsure backend is running, accessible, and CORS allows requests from ${window.location.origin}.`;
       } else {
         msg += `Request setup error: ${error.message}`;
       }
@@ -389,14 +509,16 @@ const MapPage: React.FC<MapPageProps> = ({ user }) => {
   }
 
   const currentHouseStyle = houseStyles[user.house] || houseStyles.Default;
-  const mapButtonClass = (view: MapViewType) => 
+  const mapButtonClass = (view: MapViewType) =>
     `px-3 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center space-x-2 ${currentHouseStyle.text} ${currentMapView === view ? `${currentHouseStyle.accent} bg-opacity-20 ring-1 ${currentHouseStyle.border}` : `hover:bg-gray-700 bg-gray-800`}`;
-  
+
   const actionButtonClass = (colorStyle: 'primary' | 'green' | 'yellow' | 'red' = 'primary', fullWidth: boolean = false) => {
     let colors = '';
     const houseAccentIsDark = user.house === 'Hufflepuff';
     switch (colorStyle) {
-        case 'primary': colors = `${currentHouseStyle.accent.replace('text-','bg-')} ${houseAccentIsDark ? 'text-amber-50' : 'text-slate-900'} hover:opacity-90`; break;
+        case 'primary':
+            colors = `${currentHouseStyle.accent.replace('text-','bg-')} ${houseAccentIsDark ? 'text-amber-50' : 'text-slate-900'} hover:opacity-90`;
+            break;
         case 'green': colors = 'bg-green-600 hover:bg-green-500 text-white'; break;
         case 'yellow': colors = 'bg-yellow-500 hover:bg-yellow-400 text-slate-900'; break;
         case 'red': colors = 'bg-red-600 hover:bg-red-500 text-white'; break;
@@ -424,21 +546,7 @@ const MapPage: React.FC<MapPageProps> = ({ user }) => {
                 </button>
             </div>
         )}
-        {!MARKER_UPLOAD_URL.startsWith('https://') && IS_FRONTEND_SECURE_CONTEXT && ( 
-             <div className="mb-4 p-3 rounded-lg border-2 border-orange-500 bg-orange-700 bg-opacity-30 text-orange-200 flex items-start">
-                <AlertTriangle size={32} className="mr-3 mt-1 text-orange-400 flex-shrink-0" />
-                <div className="flex-grow">
-                    <h3 className="font-semibold">Configuration Notice: Landmark Upload URL</h3>
-                    <p className="text-sm">
-                        The landmark upload URL (<code>{MARKER_UPLOAD_URL}</code>) is configured to use HTTP, 
-                        but this frontend page is served over HTTPS. Browsers may block these requests ("mixed content").
-                        Please ensure your <code>MARKER_UPLOAD_URL</code> uses HTTPS.
-                    </p>
-                </div>
-            </div>
-        )}
-
-
+        
         <header className="text-center mb-8 animate-in fade-in slide-in-from-top-8">
           <h1 className={`text-4xl sm:text-5xl font-bold ${currentHouseStyle.text} bg-clip-text drop-shadow-2xl mb-3`}>
             Explore the Map, {user.wizardName}
@@ -475,12 +583,33 @@ const MapPage: React.FC<MapPageProps> = ({ user }) => {
             <button onClick={() => setCurrentMapView('terrain')} className={mapButtonClass('terrain')}><Mountain size={18}/> <span>Terrain</span></button>
           </div>
 
-          <div ref={mapRef} className="relative w-full h-[300px] sm:h-[400px] md:h-[450px] rounded-lg overflow-hidden border border-gray-700 shadow-inner" aria-label="Interactive map">
-             {(!latitude || !longitude) && !locationError && !isMapActiveRef.current && (<div className="absolute inset-0 flex items-center justify-center bg-gray-800 bg-opacity-75"><p className="text-amber-200 text-lg">Initializing map & acquiring location...</p></div>)}
-             {(!latitude || !longitude) && !locationError && isMapActiveRef.current && (<div className="absolute inset-0 flex items-center justify-center bg-gray-800 bg-opacity-75"><p className="text-amber-200 text-lg">Map ready. Acquiring location...</p></div>)}
-             {locationError && !latitude && !longitude && (<div className="absolute inset-0 flex items-center justify-center bg-red-900 bg-opacity-50 p-4"><p className="text-red-200 text-center text-lg">Could not acquire location to initialize map. Please check permissions.</p></div>)}
+          <div ref={mapRef} className="relative w-full h-[350px] sm:h-[450px] md:h-[500px] rounded-lg overflow-hidden border border-gray-700 shadow-inner" aria-label="Interactive map">
+             {!isMapInitialized && !locationError && (<div className="absolute inset-0 flex items-center justify-center bg-gray-800 bg-opacity-75"><p className="text-amber-200 text-lg">Initializing map...</p></div>)}
+             {isMapInitialized && (!latitude || !longitude) && !locationError && (<div className="absolute inset-0 flex items-center justify-center bg-gray-800 bg-opacity-75"><p className="text-amber-200 text-lg">Map ready. Acquiring location...</p></div>)}
+             {locationError && locationError.includes("Map failed to initialize") && (<div className="absolute inset-0 flex items-center justify-center bg-red-900 bg-opacity-60 p-4"><p className="text-red-200 text-center text-lg">{locationError}</p></div>)}
           </div>
 
+          <div className="flex flex-wrap gap-x-4 gap-y-2 justify-center items-center mt-3 text-xs sm:text-sm text-amber-200">
+            <span className="inline-flex items-center gap-1">
+              <span className="w-5 h-5 inline-block align-middle">
+                <svg width="22" height="22"><circle cx="11" cy="11" r="7" fill="#2563eb" stroke="#fff" strokeWidth="3"/><circle cx="11" cy="11" r="3" fill="#60a5fa" stroke="#2563eb" strokeWidth="1.5"/></svg>
+              </span>
+              You ({user.wizardName})
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="w-5 h-5 inline-block align-middle">
+                <svg width="22" height="22"><rect x="4" y="6" width="14" height="10" rx="2" fill="#fbbf24" stroke="#b45309" strokeWidth="1.6"/><path d="M7 12q2-5 4-5t4 5" stroke="#b45309" strokeWidth="1.2" fill="none"/><circle cx="11" cy="15" r="1.2" fill="#b45309"/></svg>
+              </span>
+              Mall
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="w-5 h-5 inline-block align-middle">
+                <svg width="22" height="22"><rect x="5" y="6" width="12" height="10" rx="2" fill="#34d399" stroke="#065f46" strokeWidth="1.6"/><rect x="10" y="9" width="2" height="7" fill="#065f46"/><rect x="7" y="12" width="8" height="2" fill="#065f46"/></svg>
+              </span>
+              Hospital
+            </span>
+          </div>
+          
           <div className={`mt-8 pt-6 border-t-2 ${currentHouseStyle.border} border-opacity-30`}>
             <h2 className={`text-2xl font-semibold mb-4 text-center ${currentHouseStyle.text}`}>Add New Landmark</h2>
             <canvas ref={canvasRef} style={{ display: 'none' }}></canvas>
@@ -488,13 +617,14 @@ const MapPage: React.FC<MapPageProps> = ({ user }) => {
             {!isCameraVisible && !capturedImage && (
               <button 
                 onClick={openCamera} 
-                disabled={!latitude || !longitude || isUploadingMarker || !IS_FRONTEND_SECURE_CONTEXT} 
+                disabled={!latitude || !longitude || isUploadingMarker || !IS_FRONTEND_SECURE_CONTEXT || !isMapInitialized} 
                 className={actionButtonClass('primary', true)}
-                title={!IS_FRONTEND_SECURE_CONTEXT ? "Camera disabled: Requires HTTPS or localhost" : (!latitude || !longitude) ? "Waiting for location to enable camera" : "Open camera"}
+                title={!isMapInitialized ? "Map not ready" : !IS_FRONTEND_SECURE_CONTEXT ? "Camera disabled: Requires HTTPS or localhost for frontend" : (!latitude || !longitude) ? "Waiting for location to enable camera" : "Open camera"}
               >
                 <CameraIcon size={18}/>
                 <span>
-                  {!IS_FRONTEND_SECURE_CONTEXT ? 'Camera Requires HTTPS (Frontend)' : 
+                  {!isMapInitialized ? 'Waiting for Map...' :
+                   !IS_FRONTEND_SECURE_CONTEXT ? 'Camera Requires Secure Page (HTTPS)' : 
                    (!latitude || !longitude) ? 'Acquiring Location for Camera...' : 'Open Camera to Add Landmark'}
                 </span>
               </button>
@@ -516,12 +646,12 @@ const MapPage: React.FC<MapPageProps> = ({ user }) => {
                 <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
                   <button 
                     onClick={handleSubmitMarker} 
-                    disabled={isUploadingMarker || !MARKER_UPLOAD_URL.startsWith('https://')} 
+                    disabled={isUploadingMarker || !isMapInitialized} 
                     className={actionButtonClass('green', true)}
-                    title={!MARKER_UPLOAD_URL.startsWith('https://') ? "Upload disabled: Backend URL is not HTTPS" : (isUploadingMarker ? 'Uploading...' : 'Upload Landmark')}
+                    title={!isMapInitialized ? "Map not ready for upload" : (isUploadingMarker ? 'Uploading...' : 'Upload Landmark')}
                   >
                     <UploadCloud size={18}/> 
-                    {!MARKER_UPLOAD_URL.startsWith('https://') ? 'Backend URL Not HTTPS' : (isUploadingMarker ? 'Uploading...' : 'Upload Landmark')}
+                    {isUploadingMarker ? 'Uploading...' : 'Upload Landmark'}
                   </button>
                   <button onClick={handleRetake} disabled={isUploadingMarker} className={actionButtonClass('yellow', true)}>
                     <RefreshCw size={18}/> Retake Photo
