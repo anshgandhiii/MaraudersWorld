@@ -1,244 +1,283 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
-import {
-  Sparkles,
-  Package,
-  Compass,
-  BookOpen,
-  Map
-} from "lucide-react";
-import type { User, InventoryItem } from "../types";
-import { houseStyles, NavigationCard } from "./Dashboard";
+import items from "../data/items.json";
+import malls from "../data/malls.json";
+import { MapPin, Package, Camera, Route, CheckCircle2 } from "lucide-react";
+import { getCurrentPosition, isNearLocation, loadHereMapScript, getHereApiKey } from "../utils/here";
 
-interface InventoryCardProps {
-  item: InventoryItem;
-  houseStyle: typeof houseStyles[keyof typeof houseStyles];
-  delay: string;
-  onUse: (itemId: number) => void;
-}
+type InventoryItem = {
+  itemId: number;
+  obtainedAt: string; // ISO string
+  locationName: string;
+  photoUrl?: string;
+};
 
-const InventoryCard: React.FC<InventoryCardProps> = ({ item, houseStyle, delay, onUse }) => (
-  <div
-    className={`relative rounded-2xl p-6 shadow-xl border-2 ${houseStyle.border} bg-gradient-to-br ${houseStyle.bg} ${houseStyle.glow} animate-in`}
-    style={{ animationDelay: delay }}
-  >
-    <div className="flex items-center space-x-4 mb-4">
-      <Package className={`${houseStyle.accent}`} size={28} />
-      <h3 className={`text-2xl font-semibold ${houseStyle.text}`}>
-        {item.item.name}
-      </h3>
-    </div>
-    <p className={`${houseStyle.text} text-sm`}>Type: {item.item.item_type}</p>
-    <p className={`${houseStyle.text} text-sm`}>Quantity: {item.quantity}</p>
-    <p className={`${houseStyle.text} text-sm`}>Rarity: {item.item.rarity}/5</p>
-    <p className={`${houseStyle.text} text-sm`}>Cost: {item.item.cost_galleons} Galleons, {item.item.cost_gems} Gems</p>
-    <p className={`${houseStyle.text} text-sm mt-2`}>{item.item.description}</p>
-    {item.item.image_url && (
-      <img
-        src={item.item.image_url}
-        alt={item.item.name}
-        className="mt-4 rounded-lg max-w-full h-auto"
-      />
-    )}
-    {(item.item.item_type === 'THEME' || item.item.item_type === 'ACCESSORY') && (
-      <button
-        onClick={() => onUse(item.item.id)}
-        className={`mt-4 px-4 py-2 rounded-lg bg-amber-500 text-white hover:bg-amber-600 ${houseStyle.text}`}
-      >
-        Use Item
-      </button>
-    )}
-  </div>
-);
+const getInventory = (): InventoryItem[] => {
+  try {
+    return JSON.parse(localStorage.getItem("inventory") || "[]");
+  } catch {
+    return [];
+  }
+};
 
-interface InventoryPageProps {
-  user: User;
-}
+const saveInventory = (inv: InventoryItem[]) => {
+  localStorage.setItem("inventory", JSON.stringify(inv));
+};
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://maraudersworld.onrender.com';
+const mallForItem = (itemId: number) => malls[0]; // For demo, always first mall. Extend as needed.
 
-const InventoryPage: React.FC<InventoryPageProps> = ({ user }) => {
-  const [mounted, setMounted] = useState(false);
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
+const Inventory: React.FC = () => {
+  const [inventory, setInventory] = useState<InventoryItem[]>(getInventory());
+  const [obtainingItem, setObtainingItem] = useState<number | null>(null);
+  const [step, setStep] = useState<"idle"|"routing"|"photo"|"done">("idle");
+  const [routeMapVisible, setRouteMapVisible] = useState(false);
+  const [error, setError] = useState<string|null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
-  useEffect(() => {
-    setMounted(true);
-    const fetchInventory = async () => {
-      try {
-        const token = localStorage.getItem('accessToken');
-        if (!token) {
-          throw new Error('No access token found');
-        }
-        const response = await axios.get<InventoryItem[]>(`${API_BASE_URL}/game/inventory/me/`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        setInventory(response.data);
-        setLoading(false);
-      } catch (error) {
-        console.error("Error fetching inventory:", error);
-        setLoading(false);
-      }
-    };
-    fetchInventory();
-  }, []);
+  // Map/route logic
+  const [userPos, setUserPos] = useState<{lat:number,lng:number}|null>(null);
+  const [mapReady, setMapReady] = useState(false);
 
-  const handleUseItem = async (itemId: number) => {
+  const startObtain = async (itemId: number) => {
+    setObtainingItem(itemId);
+    setError(null);
+    setStep("routing");
+    setRouteMapVisible(true);
+    // Get user location
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        throw new Error('No access token found');
-      }
-      await axios.patch(`${API_BASE_URL}/api/profiles/me/`, {
-        active_theme: itemId, // Simplified, adjust based on item type
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      // Refresh user profile
-      const response = await axios.get(`${API_BASE_URL}/api/profiles/me/`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const updatedUser: User = {
-        ...user,
-        active_theme: response.data.active_theme,
-        active_accessories: response.data.active_accessories,
-      };
-      // Note: Update user state in App.tsx for global effect
-      console.log("Item used:", updatedUser);
-    } catch (error) {
-      console.error("Error using item:", error);
+      const pos = await getCurrentPosition();
+      setUserPos({lat: pos.coords.latitude, lng: pos.coords.longitude});
+      await loadHereMapScript();
+      setMapReady(true);
+    } catch (e: any) {
+      setError("Failed to get location or load map.");
+      setObtainingItem(null);
+      setStep("idle");
     }
   };
 
-  if (!user.house) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-xl text-amber-200">
-        No house assigned. Please complete the Sorting Hat quiz.
-      </div>
-    );
-  }
+  const handleArrivedAndPhoto = () => {
+    setStep("photo");
+    setRouteMapVisible(false);
+  };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-xl text-amber-200">
-        Loading inventory...
-      </div>
-    );
-  }
+  const handlePhotoUpload = async (file: File) => {
+    setUploading(true);
+    setError(null);
+    // Re-check location on upload
+    try {
+      const pos = await getCurrentPosition();
+      const mall = mallForItem(obtainingItem!);
+      if (!isNearLocation(pos.coords.latitude, pos.coords.longitude, mall.lat, mall.lng, 120)) {
+        setError("You are not close enough to the mall. Please go to the correct location!");
+        setUploading(false);
+        return;
+      }
+      // Accept photo (simulate upload)
+      const url = URL.createObjectURL(file);
+      setPhotoPreview(url);
 
-  const currentHouseStyle = houseStyles[user.house];
+      // Save to inventory
+      const newInv: InventoryItem = {
+        itemId: obtainingItem!,
+        obtainedAt: new Date().toISOString(),
+        locationName: mall.name,
+        photoUrl: url
+      };
+      const nextInv = [...inventory, newInv];
+      setInventory(nextInv);
+      saveInventory(nextInv);
+      setStep("done");
+    } catch (e: any) {
+      setError("Photo upload failed: " + (e.message || "Unknown error"));
+    }
+    setUploading(false);
+  };
+
+  // For HERE routing map
+  useEffect(()=>{
+    if (!routeMapVisible || !userPos || !obtainingItem || !mapReady) return;
+    // @ts-ignore
+    const H = window.H;
+    const mall = mallForItem(obtainingItem);
+    // Clean up any previous map
+    const old = document.getElementById("here-route-map");
+    if (old) old.innerHTML = "";
+    // @ts-ignore
+    const platform = new H.service.Platform({apikey:getHereApiKey()});
+    // @ts-ignore
+    const defaultLayers = platform.createDefaultLayers();
+    // @ts-ignore
+    const map = new H.Map(
+      document.getElementById("here-route-map"),
+      defaultLayers.vector.normal.map,
+      {center:userPos,zoom:14}
+    );
+    // @ts-ignore
+    new H.mapevents.Behavior(new H.mapevents.MapEvents(map));
+    // @ts-ignore
+    H.ui.UI.createDefault(map, defaultLayers);
+    // Add markers & route
+    // @ts-ignore
+    const userMarker = new H.map.Marker(userPos);
+    // @ts-ignore
+    const mallMarker = new H.map.Marker({lat:mall.lat, lng:mall.lng});
+    map.addObject(userMarker);
+    map.addObject(mallMarker);
+
+    // Routing
+    // @ts-ignore
+    const router = platform.getRoutingService(null, 8);
+    const routingParameters = {
+      routingMode: 'fast',
+      transportMode: 'pedestrian',
+      origin: `${userPos.lat},${userPos.lng}`,
+      destination: `${mall.lat},${mall.lng}`,
+      return: 'polyline,summary'
+    };
+    router.calculateRoute(routingParameters, (result:any)=>{
+      if (result.routes && result.routes.length) {
+        // @ts-ignore
+        const route = result.routes[0];
+        // @ts-ignore
+        route.sections.forEach((section:any) => {
+          let linestring = new H.geo.LineString();
+          section.polyline.split(';').forEach((pointStr:string)=>{
+            const [lat, lng] = pointStr.split(',').map(Number);
+            linestring.pushLatLngAlt(lat, lng, 0);
+          });
+          // @ts-ignore
+          const routeLine = new H.map.Polyline(linestring, {
+            style: {strokeColor: 'rgba(251,191,36,0.9)', lineWidth: 6}
+          });
+          map.addObject(routeLine);
+        });
+      }
+    }, (error:any)=>{});
+  }, [routeMapVisible, userPos, obtainingItem, mapReady]);
+
+  const mallColor = "text-amber-700";
+  const cardBase = "bg-gradient-to-br from-yellow-50 via-amber-100 to-yellow-50 border-2 border-amber-300 rounded-2xl shadow-lg";
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-gray-900 to-stone-950 text-amber-50 relative overflow-hidden">
-      {user.active_theme?.image_url && (
-        <div
-          className="absolute inset-0 opacity-20"
-          style={{
-            backgroundImage: `url(${user.active_theme.image_url})`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-          }}
-        ></div>
-      )}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {[...Array(20)].map((_, i) => (
-          <div
-            key={i}
-            className="absolute animate-pulse"
-            style={{
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              animationDelay: `${Math.random() * 3}s`,
-              animationDuration: `${2 + Math.random() * 2}s`,
-            }}
-          >
-            <Sparkles
-              className="text-amber-400/20"
-              size={Math.random() * 16 + 8}
-            />
-          </div>
-        ))}
-      </div>
-
-      <div className="relative z-10 p-6 sm:p-8 lg:p-12">
-        <header
-          className={`text-center mb-16 ${mounted ? "animate-in fade-in slide-in-from-top-8" : "opacity-0"}`}
-        >
-          <div className="relative">
-            {user.active_accessories.length > 0 && (
-              <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 flex space-x-2">
-                {user.active_accessories.map((accessory) => (
-                  <img
-                    key={accessory.id}
-                    src={accessory.image_url}
-                    alt={accessory.name}
-                    className="w-12 h-12 rounded-full"
-                  />
-                ))}
+    <div>
+      <h2 className="text-3xl font-bold mb-4 flex items-center gap-2">
+        <Package className="text-yellow-400" /> Inventory
+      </h2>
+      <ul className="space-y-6">
+        {items.map(item => {
+          const owned = inventory.some(i => i.itemId === item.id);
+          const mall = mallForItem(item.id);
+          const obtained = inventory.find(i => i.itemId === item.id);
+          return (
+            <li key={item.id} className={`${cardBase} p-6 flex flex-col md:flex-row md:items-center md:justify-between`}>
+              <div className="flex items-center gap-4">
+                <Package className="text-amber-400" size={36} />
+                <div>
+                  <h3 className="text-xl font-bold text-amber-900">{item.name}</h3>
+                  <p className="text-stone-700">{item.description}</p>
+                  <p className={`mt-2 flex items-center gap-2 ${mallColor}`}>
+                    <MapPin /> Obtain at <span className="font-semibold">{mall.name}</span>
+                  </p>
+                </div>
               </div>
-            )}
-            <h1 className="text-6xl sm:text-7xl lg:text-8xl font-bold bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-300 bg-clip-text text-transparent drop-shadow-2xl mb-4 leading-tight">
-              Your Inventory, {user.wizardName}
-            </h1>
-            <div className="absolute -top-4 -right-4 animate-spin-slow">
-              <Sparkles className="text-amber-400" size={32} />
-            </div>
+              <div className="mt-4 md:mt-0 md:ml-6 flex flex-col items-start">
+                {owned && obtained ? (
+                  <span className="flex items-center gap-2 px-3 py-1 bg-green-100 border border-green-400 rounded text-green-800 font-semibold">
+                    <CheckCircle2 className="text-green-500" /> Obtained
+                  </span>
+                ) : obtainingItem === item.id && step !== "idle" ? (
+                  <span className="flex items-center gap-2 px-3 py-1 bg-amber-100 border border-amber-400 rounded text-amber-800 font-semibold">
+                    <Route className="animate-bounce" /> Journey in Progress...
+                  </span>
+                ) : (
+                  <button
+                    className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded font-bold shadow transition"
+                    onClick={() => startObtain(item.id)}
+                  >
+                    <Route /> Obtain
+                  </button>
+                )}
+                {owned && obtained?.photoUrl && (
+                  <img src={obtained.photoUrl} alt="Proof" className="w-20 h-20 object-cover rounded mt-2 border-2 border-amber-400 shadow" />
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+
+      {/* Routing Map Modal */}
+      {routeMapVisible && obtainingItem !== null && step === "routing" && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-2xl shadow-2xl border-4 border-amber-400 max-w-lg w-full p-6 relative">
+            <button
+              className="absolute top-2 right-3 text-amber-700 text-xl"
+              onClick={() => { setObtainingItem(null); setRouteMapVisible(false); setStep("idle"); }}>
+              ×
+            </button>
+            <h3 className="text-xl font-bold text-amber-900 mb-2 flex items-center gap-2">
+              <Route /> Route to {mallForItem(obtainingItem!).name}
+            </h3>
+            <div id="here-route-map" className="w-full h-72 rounded border-amber-200 border mb-4"></div>
+            <button
+              className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded font-bold shadow"
+              onClick={handleArrivedAndPhoto}
+            >I have arrived!</button>
+            <p className="text-xs text-amber-600 mt-2">Walk to the mall. Once there, click “I have arrived!” to verify and upload photo.</p>
           </div>
-          <p className="text-2xl text-amber-200 italic font-light tracking-wide">
-            Treasures of a Wizard
-          </p>
-        </header>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-16">
-          {inventory.length === 0 ? (
-            <p className="text-center text-amber-200 col-span-full">
-              Your inventory is empty. Embark on quests to collect magical items!
-            </p>
-          ) : (
-            inventory.map((item, index) => (
-              <InventoryCard
-                key={item.id}
-                item={item}
-                houseStyle={currentHouseStyle}
-                delay={`${300 + index * 100}ms`}
-                onUse={handleUseItem}
-              />
-            ))
-          )}
         </div>
+      )}
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          <NavigationCard
-            to="/quests"
-            icon={Compass}
-            title="View Quests"
-            description="Embark on magical adventures and earn valuable experience points"
-            delay="700ms"
-          />
-          <NavigationCard
-            to="/spellbook"
-            icon={BookOpen}
-            title="Open Spellbook"
-            description="Study ancient spells and master the mystical arts of wizardry"
-            delay="800ms"
-          />
-          <NavigationCard
-            to="/map"
-            icon={Map}
-            title="Explore the Map"
-            description="Discover hidden locations and secret passages throughout Hogwarts"
-            delay="900ms"
-          />
+      {/* Photo Upload Modal */}
+      {step === "photo" && obtainingItem !== null && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-2xl shadow-2xl border-4 border-amber-400 max-w-md w-full p-8 relative">
+            <button
+              className="absolute top-2 right-4 text-amber-700 text-xl"
+              onClick={() => { setObtainingItem(null); setStep("idle"); setPhotoPreview(null); }}>
+              ×
+            </button>
+            <h3 className="text-xl font-bold text-amber-900 mb-4 flex items-center gap-2">
+              <Camera /> Upload Photo Proof
+            </h3>
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              disabled={uploading}
+              onChange={e => e.target.files?.[0] && handlePhotoUpload(e.target.files[0])}
+              className="block w-full text-sm"
+            />
+            {photoPreview && (
+              <img src={photoPreview} alt="Preview" className="w-32 h-32 mt-4 object-cover rounded border-2 border-amber-400 shadow" />
+            )}
+            <p className="text-xs text-stone-500 mt-2">Take a clear photo at the mall as your proof.</p>
+            {error && <div className="text-red-600 mt-3">{error}</div>}
+          </div>
         </div>
+      )}
 
-        <footer className="text-center mt-20 py-8 border-t border-amber-400/20 animate-in" style={{ animationDelay: "1000ms" }}>
-          <p className="text-amber-200/60 text-sm tracking-wide">
-            Hogwarts Inventory Vault © Ministry of Magic Archives, Restricted Section
-          </p>
-        </footer>
-      </div>
+      {/* Done Modal */}
+      {step === "done" && obtainingItem !== null && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-2xl shadow-2xl border-4 border-green-400 max-w-sm w-full p-8 text-center">
+            <CheckCircle2 className="text-green-500 mx-auto mb-2" size={48} />
+            <h3 className="text-2xl font-bold text-green-900 mb-2">Item Obtained!</h3>
+            <p className="text-green-700">You have successfully added the item to your inventory. Well done, wizard!</p>
+            <button
+              className="mt-6 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded font-bold shadow"
+              onClick={() => { setObtainingItem(null); setStep("idle"); setPhotoPreview(null); }}
+            >Close</button>
+          </div>
+        </div>
+      )}
+
+      {error && !routeMapVisible && step === "idle" && (
+        <div className="mt-6 text-red-600 font-semibold">{error}</div>
+      )}
     </div>
   );
 };
 
-export default InventoryPage;
+export default Inventory;
